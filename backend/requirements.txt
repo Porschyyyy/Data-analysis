@@ -1,0 +1,10 @@
+numpy
+pandas
+astropy
+scipy
+scikit-image
+astroscrappy
+fastapi
+uvicorn[standard]
+matplotlib
+pydantic

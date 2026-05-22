@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Environment
+.env
+.env.local
+*.env
+
+# Large data
+raw/
+output/
+*.fits
+*.fit
+*.fts
+
+# OS
+.DS_Store
+Thumbs.db

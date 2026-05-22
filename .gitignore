@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# FITS / astronomy data
+raw/
+output/
+output_1/
+*.fits
+*.fit
+
+# Next.js
+frontend/node_modules/
+frontend/.next/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
