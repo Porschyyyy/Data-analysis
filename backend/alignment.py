@@ -116,7 +116,8 @@ def run_centroid_alignment(
     x_star,
     y_star,
     box_size=40,
-    skip_existing=False
+    skip_existing=False,
+    progress_callback=None,
 ):
     
     input_path = Path(input_path)
@@ -194,5 +195,12 @@ def run_centroid_alignment(
         except Exception as e:
             print("Alignment failed:", input_file)
             print("Reason:", e)
+
+        if progress_callback is not None:
+            progress_callback(
+            i,
+            len(fits_files),
+            f"Aligning {Path(input_file).name}",
+        )
 
     print("\nCentroid alignment finished")

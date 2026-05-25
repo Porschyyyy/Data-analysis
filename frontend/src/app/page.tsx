@@ -2,6 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { listFitsRequest } from "./lib/pipelineApi"
+import { StatusFooter } from "./components/StatusFooter";
+import { Toolbar } from "./components/Toolbar";
+import { TabBar } from "./components/TabBar";
+import { ImageViewer } from "./components/ImageViewer";
+import { ControlPanelHeader } from "./components/ControlPanelHeader";
+import { ImportPanel } from "./components/panels/ImportPanel";
+
 import {
   API_BASE,
   defaultPositionsText,
@@ -41,7 +48,14 @@ export default function Home() {
   const [runUntil, setRunUntil] = useState<StepKey>("lightcurve");
   const [activeStep, setActiveStep] = useState("");
   const [doneSteps, setDoneSteps] = useState<string[]>([]);
+
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [totalImages, setTotalImages] = useState(0);
+  const [processingMessage, setProcessingMessage] = useState("Ready");
+
   const [logs, setLogs] = useState<string[]>(["Ready."]);
+
+  const [isBackendRunning, setIsBackendRunning] = useState(false);
 
   const [xStar, setXStar] = useState("");
   const [yStar, setYStar] = useState("");
@@ -60,7 +74,7 @@ export default function Home() {
     { group_name: string; n_files: number; example_files: string[] }[]
   >([])
 
-const [frameRoleMap, setFrameRoleMap] = useState<Record<string, string>>({})
+  const [frameRoleMap, setFrameRoleMap] = useState<Record<string, string>>({})
   const [imageProcessingPreviewStep, setImageProcessingPreviewStep] =
     useState<"calibrated" | "trimmed" | "cosmic_cleaned" | "aligned">("calibrated")
   const [fitsDownsample, setFitsDownsample] = useState(8);
@@ -246,32 +260,45 @@ const comparisonCount = (() => {
   }
 })();
 
+const progressPercent =
+  totalImages > 0
+    ? Math.min(100, Math.round((currentImageIndex / totalImages) * 100))
+    : 0;
+
+const statusLabel =
+  activeStep === "idle" ? "Ready" : "Processing";
+
+const rawLabel = rawPath ? "Selected" : "None";
+const outputLabel = outputPath ? "Selected" : "None";
+
+useEffect(() => {
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/progress`);
+      const data = await res.json();
+
+      setCurrentImageIndex(data.current ?? 0);
+      setTotalImages(data.total ?? 0);
+      setProcessingMessage(data.message ?? "Ready");
+      setIsBackendRunning(data.running ?? false);
+    } catch {
+      // backend ยังไม่เปิด ไม่ต้องทำอะไร
+    }
+  }, 500);
+
+  return () => clearInterval(interval);
+}, []);
+
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 text-slate-900">
       <div className="mx-auto flex max-w-375 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
         <header className="border-b border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center gap-2 bg-slate-50 px-4 py-3">
-          {toolbarButtons.map((tool) => {
-            const Icon = tool.icon;
-
-            return (
-              <button
-                key={tool.key}
-                title={tool.title}
-                className={`flex h-10 w-10 items-center justify-center rounded-xl border transition ${
-                  activeTool === tool.key
-                    ? "border-blue-500 bg-blue-100 text-blue-700 shadow"
-                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                }`}
-                type="button"
-                onClick={() => handleToolClick(tool.key)}
-              >
-                <Icon size={18} />
-              </button>
-            );
-          })}
-        </div>
+          <Toolbar
+            toolbarButtons={toolbarButtons}
+            activeTool={activeTool}
+            onToolClick={handleToolClick}
+          />
       </header>
 
       <section className="border-b border-slate-200 bg-linear-to-r from-slate-950 via-slate-900 to-blue-950 px-6 py-5 text-white">
@@ -297,161 +324,46 @@ const comparisonCount = (() => {
 
       <nav className="border-b border-slate-400 bg-[#e8e8e8] px-2 pt-2">
         <div className="flex flex-wrap gap-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`rounded-t-lg border border-b-0 px-4 py-2 text-sm font-medium ${
-                activeTab === tab.key
-                  ? "border-slate-500 bg-white text-slate-900"
-                  : "border-slate-400 bg-slate-200 text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          <TabBar
+            tabs={tabs}
+            activeTab={activeTab}
+            onTabClick={setActiveTab}
+          />
         </div>
       </nav>
 
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-            <div>
-              <h2 className="font-semibold">Image / Plot Viewer</h2>
-              <p className="text-xs text-slate-500">
-                Preview graph or FITS image stack
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setPreviewVersion((v) => v + 1)}
-                className="border border-slate-500 bg-slate-100 px-3 py-1 text-xs hover:bg-white"
-              >
-                Refresh
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("results")}
-                className="border border-slate-500 bg-slate-100 px-3 py-1 text-xs hover:bg-white"
-              >
-                Results
-              </button>
-            </div>
-          </div>
-
-          <div
-            onClick={handleViewerClick}
-            className={`relative flex min-h-155 items-center justify-center overflow-hidden bg-slate-100 p-4 ${
-              activeTool === "target" || activeTool === "comparison"
-                ? "cursor-crosshair"
-                : activeTool === "zoom"
-                ? "cursor-zoom-in"
-                : activeTool === "move"
-                ? "cursor-grab"
-                : "cursor-default"
-            }`}
-          >
-            {imageUrl ? (
-              <img
-                ref={viewerImageRef}
-                src={imageUrl}
-                alt={previewMode === "fits" ? "FITS preview" : "Light curve"}
-                className="max-h-150 max-w-full rounded-lg border border-slate-200 bg-white object-contain shadow-sm transition-transform"
-                style={{
-                  transform: `scale(${zoomLevel})`,
-                }}
-              />
-            ) : (
-              <p className="text-slate-400">No image selected</p>
-            )}
-
-            <div className="absolute bottom-3 left-3 rounded bg-white/90 px-3 py-1 text-xs text-slate-700 shadow">
-              Tool: {activeTool} | Zoom: {zoomLevel.toFixed(2)}x
-            </div>
-
-            <div className="absolute bottom-3 right-3 rounded bg-white/90 px-3 py-1 text-xs text-slate-700 shadow">
-              {viewerMessage}
-            </div>
-          </div>
-
-          <div className="border-t border-slate-300 bg-[#f5f5f5] px-3 py-2 text-xs text-slate-600">
-            Preview path: {previewMode === "fits" ? fitsPreviewPath : imagePath}
-          </div>
-        </section>
+        <ImageViewer
+          viewerImageRef={viewerImageRef}
+          previewMode={previewMode}
+          activeTool={activeTool}
+          previewUrl={imageUrl}
+          imagePath={imagePath}
+          fitsPreviewPath={fitsPreviewPath}
+          viewerMessage={viewerMessage}
+          zoomLevel={zoomLevel}
+          onViewerClick={handleViewerClick}
+          onRefresh={() => setPreviewVersion((v) => v + 1)}
+          onResults={() => setActiveTab("results")}
+        />
 
         <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-            <div>
-              <h2 className="font-semibold">Control Panel</h2>
-              <p className="text-xs text-slate-500">{activeTab}</p>
-            </div>
-
-            <button
-              type="button"
-              onClick={previewCurrentTab}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-100"
-            >
-              Preview
-            </button>
-          </div>
+          <ControlPanelHeader
+            activeTab={activeTab}
+            onPreview={previewCurrentTab}
+          />
 
           <div className="max-h-190 overflow-auto space-y-4 p-4">
             {activeTab === "import" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Import FITS</h3>
-
-                <div className="space-y-2">
-                  <label className="block">
-                    <span className="text-sm font-medium">Raw folder path</span>
-                    <input
-                      value={rawPath}
-                      onChange={(e) => setRawPath(e.target.value)}
-                      placeholder="Select raw FITS folder..."
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                    />
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => chooseFolder("raw")}
-                    className="w-full border border-slate-600 bg-slate-100 px-3 py-2 text-sm font-semibold hover:bg-white"
-                  >
-                    Browse Raw Folder
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block">
-                    <span className="text-sm font-medium">Output folder path</span>
-                    <input
-                      value={outputPath}
-                      onChange={(e) => setOutputPath(e.target.value)}
-                      placeholder="Select output folder..."
-                      className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                    />
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => chooseFolder("output")}
-                    className="w-full border border-slate-600 bg-slate-100 px-3 py-2 text-sm font-semibold hover:bg-white"
-                  >
-                    Browse Output Folder
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={runHeadersOnly}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Read Headers
-                </button>
-              </div>
+              <ImportPanel
+                rawPath={rawPath}
+                outputPath={outputPath}
+                setRawPath={setRawPath}
+                setOutputPath={setOutputPath}
+                chooseRawFolder={() => chooseFolder("raw")}
+                chooseOutputFolder={() => chooseFolder("output")}
+                runHeadersOnly={runHeadersOnly}
+              />
             )}
 
             {activeTab === "calibration" && (
@@ -813,16 +725,18 @@ const comparisonCount = (() => {
         </aside>
       </div>
 
-      <footer className="border-t border-slate-500 bg-[#eeeeee] px-3 py-2 text-xs">
-        <div className="flex flex-wrap items-center gap-4">
-          <span>Status: {activeStep || "Ready"}</span>
-          <span>Tool: {activeTool}</span>
-          <span>Zoom: {zoomLevel.toFixed(2)}x</span>
-          <span>Done: {doneSteps.length} step(s)</span>
-          <span>Raw: {rawPath || "not selected"}</span>
-          <span>Output: {outputPath || "not selected"}</span>
-        </div>
-      </footer>
+      <StatusFooter
+        currentImageIndex={currentImageIndex}
+        totalImages={totalImages}
+        processingMessage={processingMessage}
+        isBackendRunning={isBackendRunning}
+        activeTool={activeTool}
+        zoomLevel={zoomLevel}
+        rawPath={rawPath}
+        outputPath={outputPath}
+        doneStepsLength={doneSteps.length}
+      />
+
       </div>
     </main>
   );

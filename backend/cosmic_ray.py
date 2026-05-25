@@ -112,7 +112,8 @@ def run_cosmic_ray_removal(
     sigclip=4.5,
     sigfrac=0.3,
     objlim=5.0,
-    skip_existing=False
+    skip_existing=False,
+    progress_callback=None,
 ):
 
     input_path = Path(input_path)
@@ -145,6 +146,13 @@ def run_cosmic_ray_removal(
             sigfrac=sigfrac,
             objlim=objlim,
             skip_existing=skip_existing
+        )
+
+        if progress_callback is not None:
+            progress_callback(
+            i,
+            len(fits_files),
+            f"Removing cosmic rays: {Path(input_file).name}",
         )
 
     print("\nCosmic ray removal finished")

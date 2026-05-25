@@ -118,7 +118,8 @@ def run_center_trim(
     target_width=None,
     target_height=None,
     use_common_min_size=False,
-    skip_existing=False
+    skip_existing=False,
+    progress_callback=None,
 ):
     
     input_path = Path(input_path)
@@ -174,6 +175,13 @@ def run_center_trim(
             y0=y0,
             y1=y1,
             skip_existing=skip_existing
+        )
+
+        if progress_callback is not None:
+            progress_callback(
+            i,
+            len(fits_files),
+            f"Trimming {Path(input_file).name}",
         )
 
     print("\nCenter trim finished")

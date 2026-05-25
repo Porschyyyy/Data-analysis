@@ -42,6 +42,22 @@ from plot_lightcurve import (
     plot_phase_folded_lightcurve,
 )
 
+PIPELINE_PROGRESS = {
+    "current": 0,
+    "total": 0,
+    "message": "Ready",
+    "running": False,
+}
+
+def set_progress(current=0, total=0, message="Ready", running=False, step="idle"):
+    PIPELINE_PROGRESS.update({
+        "current": int(current),
+        "total": int(total),
+        "message": message,
+        "running": running,
+        "step": step,
+    })
+
 app = FastAPI(
     title="WASP-12b Data Analysis API",
     version="2.0.0",
@@ -489,7 +505,10 @@ def api_read_headers(req: HeaderRequest):
     fits_files = get_fits_files(raw_path)
 
     if len(fits_files) == 0:
+        set_progress(0, 0, "No FITS files found", False, "headers")
         raise HTTPException(status_code=404, detail="No FITS files found")
+
+    set_progress(0, len(fits_files), "Reading FITS headers...", True, "headers")
 
     headers_df = read_all_headers(fits_files)
     summary = summarize_header_values(headers_df)
@@ -536,6 +555,8 @@ def api_read_headers(req: HeaderRequest):
         else None
     )
 
+    set_progress(len(fits_files), len(fits_files), "Headers completed", False, "headers")
+
     return {
         "status": "done",
         "step": "read_headers",
@@ -567,7 +588,10 @@ def api_run_calibration(req: CalibrationRequest):
     fits_files = get_fits_files(raw_path)
 
     if len(fits_files) == 0:
+        set_progress(0, 0, "No FITS files found", False, "calibration")
         raise HTTPException(status_code=404, detail="No FITS files found")
+
+    set_progress(0, len(fits_files), "Starting calibration...", True, "calibration")
 
     metadata_file = output_path / "fits_headers_raw.csv"
 
@@ -587,6 +611,14 @@ def api_run_calibration(req: CalibrationRequest):
                 "n_files": len(group_df),
                 "example_files": group_df["filename"].head(3).tolist(),
             })
+
+        set_progress(
+            0,
+            len(fits_files),
+            "Waiting for frame role assignment",
+            False,
+            "calibration",
+)
 
         return {
             "status": "need_frame_role_map",
@@ -609,6 +641,8 @@ def api_run_calibration(req: CalibrationRequest):
     overscan_slice = None
     trim_slice = None
 
+    set_progress(0, len(fits_files), "Creating master bias...", True, "calibration")
+
     # Master bias
     master_bias = None
     master_bias_file = None
@@ -628,6 +662,8 @@ def api_run_calibration(req: CalibrationRequest):
             skip_existing=False,
         )
 
+    set_progress(0, len(fits_files), "Creating master dark...", True, "calibration")
+
     # Master dark
     master_darks = {}
 
@@ -645,6 +681,8 @@ def api_run_calibration(req: CalibrationRequest):
         )
 
         master_darks[group_value] = output_file
+
+    set_progress(0, len(fits_files), "Creating master flat...", True, "calibration")
 
     # Master flat
     master_flats = {}
@@ -670,6 +708,8 @@ def api_run_calibration(req: CalibrationRequest):
     calibrated_path.mkdir(parents=True, exist_ok=True)
 
     calibrated_groups = []
+
+    processed_light = 0
 
     for light_group_value, light_files in groups["light"].items():
         light_meta = group_value_to_dict(
@@ -700,7 +740,18 @@ def api_run_calibration(req: CalibrationRequest):
             overscan_slice=overscan_slice,
             trim_slice=trim_slice,
             skip_existing=False,
+            progress_callback=lambda current, total, message: set_progress(
+                current,
+                total,
+                message,
+                True,
+                "calibration",
+            ),
+            progress_start=processed_light,
+            progress_total=sum(len(files) for files in groups["light"].values()),
         )
+
+        processed_light += len(light_files)
 
         calibrated_groups.append({
             "light_group": str(light_group_value),
@@ -709,6 +760,15 @@ def api_run_calibration(req: CalibrationRequest):
             "matched_flat": str(matched_flat_file) if matched_flat_file else None,
             "output_dir": str(group_output_dir),
         })
+
+        set_progress(
+            len(fits_files),
+            len(fits_files),
+            "Calibration completed",
+            False,
+            "calibration",
+        )
+
 
     return {
         "status": "done",
@@ -736,7 +796,11 @@ def api_run_trim(req: TrimRequest):
     output_path = Path(req.output_path)
 
     if not input_path.exists():
+        set_progress(0, 0, "Input path not found", False, "trim")
         raise HTTPException(status_code=404, detail=f"input_path not found: {input_path}")
+
+    fits_files = get_fits_files(input_path)
+    set_progress(0, len(fits_files), "Running trim...", True, "trim")
 
     if not req.use_common_min_size:
         if req.target_width is None or req.target_height is None:
@@ -754,7 +818,12 @@ def api_run_trim(req: TrimRequest):
         target_height=req.target_height,
         use_common_min_size=req.use_common_min_size,
         skip_existing=False,
+        progress_callback=lambda current, total, message: set_progress(
+            current, total, message, True, "trim"
+        ),
     )
+
+    set_progress(len(fits_files), len(fits_files), "Trim completed", False, "trim")
 
     return {
         "status": "done",
@@ -778,7 +847,11 @@ def api_run_cosmic_ray(req: CosmicRayRequest):
     output_path = Path(req.output_path)
 
     if not input_path.exists():
+        set_progress(0, 0, "Input path not found", False, "cosmic_ray")
         raise HTTPException(status_code=404, detail=f"input_path not found: {input_path}")
+
+    fits_files = get_fits_files(input_path)
+    set_progress(0, len(fits_files), "Removing cosmic rays...", True, "cosmic_ray")
 
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -790,7 +863,12 @@ def api_run_cosmic_ray(req: CosmicRayRequest):
         sigfrac=req.sigfrac,
         objlim=req.objlim,
         skip_existing=False,
+        progress_callback=lambda current, total, message: set_progress(
+            current, total, message, True, "cosmic_ray"
+        ),
     )
+
+    set_progress(len(fits_files), len(fits_files), "Cosmic ray removal completed", False, "cosmic_ray")
 
     return {
         "status": "done",
@@ -815,7 +893,11 @@ def api_run_alignment(req: AlignmentRequest):
     output_path = Path(req.output_path)
 
     if not input_path.exists():
+        set_progress(0, 0, "Input path not found", False, "alignment")
         raise HTTPException(status_code=404, detail=f"input_path not found: {input_path}")
+
+    fits_files = get_fits_files(input_path)
+    set_progress(0, len(fits_files), "Running alignment...", True, "alignment")
 
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -826,7 +908,12 @@ def api_run_alignment(req: AlignmentRequest):
         y_star=req.y_star,
         box_size=req.box_size,
         skip_existing=False,
+        progress_callback=lambda current, total, message: set_progress(
+            current, total, message, True, "alignment"
+        ),
     )
+
+    set_progress(len(fits_files), len(fits_files), "Alignment completed", False, "alignment")
 
     return {
         "status": "done",
@@ -850,7 +937,11 @@ def api_run_photometry(req: PhotometryRequest):
     output_csv = Path(req.output_csv)
 
     if not input_path.exists():
+        set_progress(0, 0, "Input path not found", False, "photometry")
         raise HTTPException(status_code=404, detail=f"input_path not found: {input_path}")
+
+    fits_files = get_fits_files(input_path)
+    set_progress(0, len(fits_files), "Running photometry...", True, "photometry")
 
     if len(req.positions) < 2:
         raise HTTPException(
@@ -881,7 +972,12 @@ def api_run_photometry(req: PhotometryRequest):
         centroid_box_size=req.centroid_box_size,
         recenter=req.recenter,
         auto_params=req.auto_params,
+        progress_callback=lambda current, total, message: set_progress(
+            current, total, message, True, "photometry"
+        ),
     )
+
+    set_progress(len(fits_files), len(fits_files), "Photometry completed", False, "photometry")
 
     return {
         "status": "done",
@@ -930,10 +1026,13 @@ def api_plot_lightcurve(req: LightCurveRequest):
     photometry_csv = Path(req.photometry_csv)
 
     if not photometry_csv.exists():
+        set_progress(0, 0, "Photometry CSV not found", False, "lightcurve")
         raise HTTPException(
             status_code=404,
             detail=f"photometry_csv not found: {photometry_csv}",
         )
+
+    set_progress(0, 1, "Plotting light curve...", True, "lightcurve")
     
     if not req.make_both_styles:
         raise HTTPException(
@@ -983,6 +1082,8 @@ def api_plot_lightcurve(req: LightCurveRequest):
             transit_duration_hours=transit_duration_hours,
             title=req.title,
         )
+
+        set_progress(1, 1, "Light curve completed", False, "lightcurve")
 
         return {
             "status": "done",
@@ -1215,3 +1316,7 @@ def api_preview_fits(
             status_code=500,
             detail=f"Failed to preview FITS: {type(e).__name__}: {e}",
         )
+    
+@app.get("/progress")
+def get_progress():
+    return PIPELINE_PROGRESS

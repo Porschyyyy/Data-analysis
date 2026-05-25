@@ -417,7 +417,10 @@ def calibrate_light_files(
     master_flat_file=None,
     overscan_slice=None,
     trim_slice=None,
-    skip_existing=False):
+    skip_existing=False,
+    progress_callback=None,
+    progress_start=0,
+    progress_total=None,):
     
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -440,4 +443,13 @@ def calibrate_light_files(
             master_flat_file=master_flat_file,
             overscan_slice=overscan_slice,
             trim_slice=trim_slice
+        )
+
+        if progress_callback is not None:
+            current = progress_start + i
+            total = progress_total or len(light_files)
+            progress_callback(
+                current,
+                total,
+                f"Calibrating {Path(light_file).name}",
         )

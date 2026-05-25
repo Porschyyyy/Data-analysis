@@ -775,6 +775,7 @@ def run_aperture_photometry(
     centroid_box_size=None,
     recenter=True,
     auto_params=True,
+    progress_callback=None,
 ):
     input_path = Path(input_path)
     output_csv = Path(output_csv)
@@ -857,6 +858,13 @@ def run_aperture_photometry(
         except Exception as e:
             print("Photometry failed:", input_file)
             print("Reason:", e)
+
+        if progress_callback is not None:
+            progress_callback(
+            i,
+            len(fits_files),
+            f"Photometry {Path(input_file).name}",
+        )
 
     df = pd.DataFrame(rows)
 
