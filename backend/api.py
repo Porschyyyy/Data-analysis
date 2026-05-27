@@ -635,6 +635,11 @@ def api_run_calibration(req: CalibrationRequest):
 
     groups, used_keys = make_all_groups(df)
 
+    n_bias = sum(len(files) for files in groups["bias"].values())
+    n_dark = sum(len(files) for files in groups["dark"].values())
+    n_flat = sum(len(files) for files in groups["flat"].values())
+    n_light = sum(len(files) for files in groups["light"].values())
+
     master_path = output_path / "master"
     master_path.mkdir(parents=True, exist_ok=True)
 
@@ -663,6 +668,7 @@ def api_run_calibration(req: CalibrationRequest):
         )
 
     set_progress(0, len(fits_files), "Creating master dark...", True, "calibration")
+    set_progress(n_bias, n_bias, "Master bias completed", True, "master_bias")
 
     # Master dark
     master_darks = {}

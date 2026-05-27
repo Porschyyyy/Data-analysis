@@ -13,6 +13,12 @@ type ImageViewerProps = {
   onViewerClick: (event: ViewerClickEvent) => void;
   onRefresh: () => void;
   onResults: () => void;
+  selectedMarkers: {
+    x: number;
+    y: number;
+    type: "target" | "comparison" | "reference";
+  }[];
+  fitsDownsample: number;
 };
 
 export function ImageViewer({
@@ -27,6 +33,8 @@ export function ImageViewer({
   onViewerClick,
   onRefresh,
   onResults,
+  selectedMarkers,
+  fitsDownsample,
 }: ImageViewerProps) {
   const hasPreview = previewMode === "fits" ? Boolean(fitsPreviewPath) : Boolean(imagePath);
 
@@ -70,19 +78,59 @@ export function ImageViewer({
         }`}
       >
         {hasPreview ? (
-          <img
-            ref={viewerImageRef}
-            src={previewUrl}
-            alt={previewMode === "fits" ? "FITS preview" : "Plot preview"}
+          <div
+            className="relative inline-block"
             style={{
               transform: `scale(${zoomLevel})`,
               transformOrigin: "center",
             }}
-            className="max-h-150 max-w-full rounded-lg shadow"
-          />
-        ) : (
-          <p className="text-sm text-slate-400">No image selected</p>
-        )}
+          >
+            <img
+              ref={viewerImageRef}
+              src={previewUrl}
+              alt={previewMode === "fits" ? "FITS preview" : "Plot preview"}
+              className="max-h-150 max-w-full rounded-lg shadow"
+            />
+
+            {previewMode === "fits" &&
+              selectedMarkers.map((marker, index) => {
+                const markerX = marker.x / fitsDownsample;
+                const markerY = marker.y / fitsDownsample;
+
+                const label =
+                  marker.type === "target"
+                    ? "T"
+                    : marker.type === "reference"
+                    ? "R"
+                    : `C${
+                        selectedMarkers
+                          .filter((m) => m.type === "comparison")
+                          .findIndex((m) => m === marker) + 1
+                      }`;
+
+                return (
+                  <div
+                    key={`${marker.type}-${index}`}
+                    className={`pointer-events-none absolute flex h-6 w-6 -translate-x-1/2 translate-y-1/2 items-center justify-center rounded-full border-2 bg-white/20 text-[10px] font-bold ${
+                      marker.type === "target"
+                        ? "border-red-500 text-red-500"
+                        : marker.type === "comparison"
+                        ? "border-sky-400 text-sky-500"
+                        : "border-emerald-500 text-emerald-500"
+                    }`}
+                    style={{
+                      left: `${markerX}px`,
+                      bottom: `${markerY}px`,
+                    }}
+                  >
+                    {label}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">No image selected</p>
+          )}
 
         <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-1 text-xs shadow">
           Tool: {activeTool} | Zoom: {zoomLevel.toFixed(2)}x

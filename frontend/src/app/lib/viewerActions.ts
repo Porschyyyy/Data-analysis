@@ -69,6 +69,11 @@ export function handleViewerClick(
     setPositionsText: React.Dispatch<React.SetStateAction<string>>;
     setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
     setViewerMessage: (message: string) => void;
+    setSelectedMarkers: React.Dispatch<
+      React.SetStateAction<
+        { x: number; y: number; type: "target" | "comparison" | "reference" }[]
+      >
+    >;
   }
 ) {
   const point = convertViewerClickToFitsCoordinate({
@@ -119,6 +124,15 @@ export function handleViewerClick(
 
     const label = ctx.activeTool === "pick" ? "Reference star" : "Target";
 
+    ctx.setSelectedMarkers((prev) => [
+      ...prev.filter((p) => p.type !== "target" && p.type !== "reference"),
+      {
+        x: roundedX,
+        y: roundedY,
+        type: ctx.activeTool === "pick" ? "reference" : "target",
+      },
+    ]);
+
     ctx.addLog(`${label} selected at x=${roundedX}, y=${roundedY}`);
     ctx.setViewerMessage(`${label} selected: x=${roundedX}, y=${roundedY}`);
     return;
@@ -128,35 +142,53 @@ export function handleViewerClick(
     try {
       const positions = JSON.parse(ctx.positionsText);
 
-      if (Array.isArray(positions)) {
-        positions.push([roundedX, roundedY]);
-        const comparisonCount = positions.length - 1;
+      if (!Array.isArray(positions)) return;
 
-        ctx.setPositionsText(JSON.stringify(positions, null, 2));
+      const currentComparisonCount = Math.max(positions.length - 1, 0);
 
-        if (comparisonCount >= ctx.comparisonTargetCount) {
-          ctx.setClickMode(null);
-
-          ctx.addLog(
-            `Comparison selection completed with ${comparisonCount} stars`
-          );
-
-          ctx.setViewerMessage(
-            `Comparison selection complete (${comparisonCount} stars)`
-          );
-
-          return;
-        }
+      if (currentComparisonCount >= ctx.comparisonTargetCount) {
+        ctx.setClickMode(null);
+        ctx.addLog(
+          `Comparison selection already complete (${currentComparisonCount}/${ctx.comparisonTargetCount})`
+        );
+        ctx.setViewerMessage(
+          `Comparison stars already complete (${currentComparisonCount}/${ctx.comparisonTargetCount})`
+        );
+        return;
       }
-    } catch {
-      ctx.setPositionsText(
-        JSON.stringify([[0, 0], [roundedX, roundedY]], null, 2)
-      );
-    }
 
-    ctx.addLog(`Comparison star added at x=${roundedX}, y=${roundedY}`);
-    ctx.setViewerMessage(`Comparison star added: x=${roundedX}, y=${roundedY}`);
-    return;
+      positions.push([roundedX, roundedY]);
+      const comparisonCount = positions.length - 1;
+
+      ctx.setPositionsText(JSON.stringify(positions, null, 2));
+
+      ctx.setSelectedMarkers((prev) => [
+        ...prev,
+        {
+          x: roundedX,
+          y: roundedY,
+          type: "comparison",
+        },
+      ]);
+
+      ctx.addLog(`Comparison star added at x=${roundedX}, y=${roundedY}`);
+
+      if (comparisonCount >= ctx.comparisonTargetCount) {
+        ctx.setClickMode(null);
+        ctx.setViewerMessage(
+          `Comparison selection complete (${comparisonCount} stars)`
+        );
+        return;
+      }
+
+      ctx.setViewerMessage(
+        `Comparison star added: ${comparisonCount}/${ctx.comparisonTargetCount}`
+      );
+      return;
+    } catch {
+      ctx.setViewerMessage("Invalid positions JSON.");
+      return;
+    }
   }
 
   ctx.addLog(

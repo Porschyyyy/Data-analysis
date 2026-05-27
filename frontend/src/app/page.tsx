@@ -8,6 +8,12 @@ import { TabBar } from "./components/TabBar";
 import { ImageViewer } from "./components/ImageViewer";
 import { ControlPanelHeader } from "./components/ControlPanelHeader";
 import { ImportPanel } from "./components/panels/ImportPanel";
+import { CalibrationPanel } from "./components/panels/CalibrationPanel";
+import { ProcessingPanel } from "./components/panels/ProcessingPanel";
+import { StarSelectionPanel } from "./components/panels/StarSelectionPanel";
+import { PhotometryPanel } from "./components/panels/PhotometryPanel";
+import { LightCurvePanel } from "./components/panels/LightCurvePanel";
+import { ResultsPanel } from "./components/panels/ResultsPanel";
 
 import {
   API_BASE,
@@ -60,6 +66,9 @@ export default function Home() {
   const [xStar, setXStar] = useState("");
   const [yStar, setYStar] = useState("");
   const [positionsText, setPositionsText] = useState(defaultPositionsText);
+  const [selectedMarkers, setSelectedMarkers] = useState<
+    { x: number; y: number; type: "target" | "comparison" | "reference" }[]
+  >([]);
   const [comparisonTargetCount, setComparisonTargetCount] = useState(3);
 
   const [plotStyle, setPlotStyle] = useState<PlotStyle>("1");
@@ -174,6 +183,7 @@ export default function Home() {
       setPositionsText,
       setZoomLevel,
       setViewerMessage,
+      setSelectedMarkers,
     });
 
   async function loadFitsPreviewFromFolder(folderPath: string) {
@@ -248,17 +258,9 @@ useEffect(() => {
   }
 }, [activeTab, imageProcessingPreviewStep])
 
-const comparisonCount = (() => {
-  try {
-    const positions = JSON.parse(positionsText);
-
-    if (!Array.isArray(positions)) return 0;
-
-    return Math.max(positions.length - 1, 0);
-  } catch {
-    return 0;
-  }
-})();
+const comparisonCount = selectedMarkers.filter(
+  (marker) => marker.type === "comparison"
+).length;
 
 const progressPercent =
   totalImages > 0
@@ -288,6 +290,42 @@ useEffect(() => {
 
   return () => clearInterval(interval);
 }, []);
+
+const undoLastMarker = () => {
+  setSelectedMarkers((prev) => prev.slice(0, -1));
+
+  setPositionsText((prev) => {
+    try {
+      const positions = JSON.parse(prev);
+      if (!Array.isArray(positions)) return prev;
+      positions.pop();
+      return JSON.stringify(positions, null, 2);
+    } catch {
+      return prev;
+    }
+  });
+};
+
+const clearComparisonMarkers = () => {
+  setSelectedMarkers((prev) => prev.filter((m) => m.type !== "comparison"));
+
+  setPositionsText((prev) => {
+    try {
+      const positions = JSON.parse(prev);
+      if (!Array.isArray(positions)) return prev;
+      return JSON.stringify(positions.slice(0, 1), null, 2);
+    } catch {
+      return prev;
+    }
+  });
+};
+
+const clearAllMarkers = () => {
+  setSelectedMarkers([]);
+  setPositionsText("[]");
+  setXStar("");
+  setYStar("");
+};
 
 
   return (
@@ -345,6 +383,8 @@ useEffect(() => {
           onViewerClick={handleViewerClick}
           onRefresh={() => setPreviewVersion((v) => v + 1)}
           onResults={() => setActiveTab("results")}
+          selectedMarkers={selectedMarkers}
+          fitsDownsample={fitsDownsample}
         />
 
         <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -367,335 +407,76 @@ useEffect(() => {
             )}
 
             {activeTab === "calibration" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Calibration</h3>
-
-                <p className="text-sm text-slate-500">
-                  Assign each detected group, then run calibration to create master files and calibrated light frames.
-                </p>
-
-                {detectedGroups.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="font-semibold">Assign frame roles</h4>
-
-                    {detectedGroups.map((group) => (
-                      <div
-                        key={group.group_name}
-                        className="rounded-lg border border-slate-200 bg-white p-3"
-                      >
-                        <p className="text-sm font-semibold">{group.group_name}</p>
-                        <p className="text-xs text-slate-500">Files: {group.n_files}</p>
-                        <p className="text-xs text-slate-500">
-                          Example: {group.example_files.join(", ")}
-                        </p>
-
-                        <select
-                          value={frameRoleMap[group.group_name] ?? "skip"}
-                          onChange={(e) =>
-                            setFrameRoleMap((prev) => ({
-                              ...prev,
-                              [group.group_name]: e.target.value,
-                            }))
-                          }
-                          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                        >
-                          <option value="skip">skip</option>
-                          <option value="bias">bias</option>
-                          <option value="dark">dark</option>
-                          <option value="flat">flat</option>
-                          <option value="light">light</option>
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={runCalibrationOnly}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Calibration
-                </button>
-              </div>
+              <CalibrationPanel
+                detectedGroups={detectedGroups}
+                frameRoleMap={frameRoleMap}
+                setFrameRoleMap={setFrameRoleMap}
+                runCalibrationOnly={runCalibrationOnly}
+              />
             )}
 
             {activeTab === "processing" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Image Processing</h3>
+              <ProcessingPanel
+                imageProcessingPreviewStep={imageProcessingPreviewStep}
+                setImageProcessingPreviewStep={setImageProcessingPreviewStep}
 
-                <label className="block">
-                  <span className="text-sm font-medium">
-                    Preview processing step
-                  </span>
+                runTrimOnly={runTrimOnly}
+                runCosmicRayOnly={runCosmicOnly}
+                runAlignmentOnly={runAlignmentOnly}
 
-                  <select
-                    value={imageProcessingPreviewStep}
-                    onChange={(e) =>
-                      setImageProcessingPreviewStep(
-                        e.target.value as
-                          | "calibrated"
-                          | "trimmed"
-                          | "cosmic_cleaned"
-                          | "aligned"
-                      )
-                    }
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                  >
-                    <option value="calibrated">Calibrated</option>
-                    <option value="trimmed">Trimmed</option>
-                    <option value="cosmic_cleaned">Cosmic cleaned</option>
-                    <option value="aligned">Aligned</option>
-                  </select>
-                </label>
+                xStar={xStar}
+                yStar={yStar}
+                setXStar={setXStar}
+                setYStar={setYStar}
 
-                <button
-                  type="button"
-                  onClick={runTrimOnly}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Trim
-                </button>
-
-                <button
-                  type="button"
-                  onClick={runCosmicOnly}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Cosmic Ray Removal
-                </button>
-
-                <button
-                  type="button"
-                  onClick={runAlignmentOnly}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Alignment
-                </button>
-              </div>
+              />
             )}
 
             {activeTab === "stars" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Star Selection</h3>
-
-                <label className="block">
-                  <span className="text-sm font-medium">FITS preview path</span>
-                  <input
-                    value={fitsPreviewPath}
-                    onChange={(e) => setFitsPreviewPath(e.target.value)}
-                    placeholder={`${outputPath}/aligned/.../file.fits`}
-                    className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                  />
-
-                  <select
-                    value={fitsPreviewPath}
-                    onChange={(e) => {
-                      setFitsPreviewPath(e.target.value)
-                      setPreviewMode("fits")
-                      setPreviewVersion((v) => v + 1)
-                    }}
-                    className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                  >
-                    <option value="">Select FITS file...</option>
-
-                    {fitsFiles.map((file) => (
-                      <option key={file} value={file}>
-                        {file}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-medium">
-                    Preview downsample
-                  </span>
-                  <input
-                    type="number"
-                    value={fitsDownsample}
-                    onChange={(e) => setFitsDownsample(Number(e.target.value))}
-                    className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                  />
-                </label>
-
-                <button
-                  onClick={() => {
-                    setPreviewMode("fits");
-                    setPreviewVersion((v) => v + 1);
-                    addLog("FITS preview refreshed.");
-                  }}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Load FITS Preview
-                </button>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <label>
-                    <span className="text-sm font-medium">x_star</span>
-                    <input
-                      value={xStar}
-                      onChange={(e) => setXStar(e.target.value)}
-                      className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                    />
-                  </label>
-
-                  <label>
-                    <span className="text-sm font-medium">y_star</span>
-                    <input
-                      value={yStar}
-                      onChange={(e) => setYStar(e.target.value)}
-                      className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                    />
-                  </label>
-                </div>
-
-                <label className="block">
-                  <span className="text-sm font-medium">
-                    Comparison stars needed
-                  </span>
-
-                  <select
-                    value={comparisonTargetCount}
-                    onChange={(e) =>
-                      setComparisonTargetCount(Number(e.target.value))
-                    }
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                  >
-                    {[1,2,3,4,5,6,7,8].map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <p className="text-xs text-slate-500">
-                  Selected: {comparisonCount} / {comparisonTargetCount}
-                </p>
-
-                <label className="block">
-                  <span className="text-sm font-medium">
-                    Photometry positions JSON
-                  </span>
-                  <textarea
-                    value={positionsText}
-                    onChange={(e) => setPositionsText(e.target.value)}
-                    rows={9}
-                    className="mt-1 w-full border border-slate-400 px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-
-                <p className="text-xs text-slate-500">
-                  ตัวแรกคือ target star ตัวถัดไปคือ comparison stars
-                </p>
-              </div>
+              <StarSelectionPanel
+                fitsPreviewPath={fitsPreviewPath}
+                setFitsPreviewPath={setFitsPreviewPath}
+                fitsFiles={fitsFiles}
+                fitsDownsample={fitsDownsample}
+                setFitsDownsample={setFitsDownsample}
+                xStar={xStar}
+                yStar={yStar}
+                setXStar={setXStar}
+                setYStar={setYStar}
+                positionsText={positionsText}
+                setPositionsText={setPositionsText}
+                comparisonTargetCount={comparisonTargetCount}
+                setComparisonTargetCount={setComparisonTargetCount}
+                comparisonCount={comparisonCount}
+                loadFitsPreview={() => {
+                  setPreviewMode("fits");
+                  setPreviewVersion((v) => v + 1);
+                  addLog("FITS preview refreshed.");
+                }}
+                undoLastMarker={undoLastMarker}
+                clearComparisonMarkers={clearComparisonMarkers}
+                clearAllMarkers={clearAllMarkers}
+              />
             )}
 
             {activeTab === "photometry" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Photometry</h3>
-                <p className="text-sm text-slate-500">
-                  Uses auto FWHM aperture, auto annulus and centroid recentering.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={runPhotometryOnly}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Photometry
-                </button>
-              </div>
+              <PhotometryPanel
+                positionsText={positionsText}
+                setPositionsText={setPositionsText}
+                runPhotometryOnly={runPhotometryOnly}
+              />
             )}
 
             {activeTab === "lightcurve" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Light Curve</h3>
-
-                <label className="block">
-                  <span className="text-sm font-medium">Graph title</span>
-                  <input
-                    value={graphTitle}
-                    onChange={(e) => setGraphTitle(e.target.value)}
-                    className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-medium">Plot style</span>
-                  <select
-                    value={plotStyle}
-                    onChange={(e) => setPlotStyle(e.target.value as "1" | "2")}
-                    className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                  >
-                    <option value="1">Academic: points + error bars</option>
-                    <option value="2">Line: clean line only</option>
-                  </select>
-                </label>
-
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={usePreset}
-                    onChange={(e) => setUsePreset(e.target.checked)}
-                  />
-                  Use WASP-12b ephemeris preset
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => plotOnly(true)}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Plot only
-                </button>
-
-                <label className="block">
-                  <span className="text-sm font-medium">
-                    Preview image path
-                  </span>
-                  <input
-                    value={imagePath}
-                    onChange={(e) => setImagePath(e.target.value)}
-                    className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                  />
-                </label>
-              </div>
+              <LightCurvePanel
+                imagePath={imagePath}
+                setImagePath={setImagePath}
+                runPlotLightCurve={plotOnly}
+              />
             )}
 
             {activeTab === "results" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Results / Log</h3>
-
-                <label className="block">
-                  <span className="text-sm font-medium">
-                    Preview image path
-                  </span>
-                  <input
-                    value={imagePath}
-                    onChange={(e) => setImagePath(e.target.value)}
-                    className="mt-1 w-full border border-slate-400 px-2 py-1 text-sm"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => setPreviewVersion((v) => v + 1)}
-                  className="w-full border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                  Refresh Preview
-                </button>
-
-                <div className="border border-slate-500 bg-slate-950 p-3 text-white">
-                  <h4 className="mb-2 text-sm font-semibold">Run Log</h4>
-                  <div className="h-72 overflow-auto font-mono text-xs">
-                    {logs.map((log, index) => (
-                      <div key={index}>{log}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <ResultsPanel logs={logs} />
             )}
 
             <div className="mt-6 border-t border-slate-300 pt-4">
