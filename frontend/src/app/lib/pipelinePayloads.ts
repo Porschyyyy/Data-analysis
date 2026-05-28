@@ -9,12 +9,15 @@ export const calibrationPayload = (rawPath: string, outputPath: string) => ({
   combine_method: "mean",
 });
 
-export const trimPayload = (outputPath: string) => ({
+export const trimPayload = (
+  outputPath: string,
+  useCommonMinSize: boolean
+) => ({
   input_path: `${outputPath}/calibrated`,
   output_path: `${outputPath}/trimmed`,
   target_width: null,
   target_height: null,
-  use_common_min_size: true,
+  use_common_min_size: useCommonMinSize,
   skip_existing: true,
 });
 

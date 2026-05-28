@@ -13,7 +13,6 @@ import { ProcessingPanel } from "./components/panels/ProcessingPanel";
 import { StarSelectionPanel } from "./components/panels/StarSelectionPanel";
 import { PhotometryPanel } from "./components/panels/PhotometryPanel";
 import { LightCurvePanel } from "./components/panels/LightCurvePanel";
-import { ResultsPanel } from "./components/panels/ResultsPanel";
 
 import {
   API_BASE,
@@ -102,6 +101,8 @@ export default function Home() {
   const fitsImageUrl = buildFitsImageUrl(API_BASE, fitsPreviewPath, fitsDownsample, previewVersion);
   const imageUrl = previewMode === "fits" ? fitsImageUrl : plotImageUrl;
 
+  const [useCommonMinSize, setUseCommonMinSize] = useState(true);
+
   const actionContext = {
     rawPath,
     outputPath,
@@ -123,6 +124,7 @@ export default function Home() {
     setDetectedGroups,
     frameRoleMap,
     setFrameRoleMap,
+    useCommonMinSize,
   };
 
   const chooseFolder = (target: "raw" | "output") =>
@@ -184,7 +186,45 @@ export default function Home() {
       setZoomLevel,
       setViewerMessage,
       setSelectedMarkers,
+      selectedMarkers,
     });
+
+  const [trimSummary, setTrimSummary] = useState<{
+    n_files: number;
+    size_counts: { width: number; height: number; count: number }[];
+    crop_target: { width: number; height: number };
+  } | null>(null);
+
+  const loadTrimSummary = async () => {
+  if (!outputPath) {
+    addLog("Please select output folder first.");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/trim-summary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input_path: `${outputPath}/calibrated`,
+        output_path: `${outputPath}/trimmed`,
+        use_common_min_size: useCommonMinSize,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      addLog(`Trim summary failed: ${errorText}`);
+      return;
+    }
+
+    const data = await res.json();
+    setTrimSummary(data);
+    addLog(`Trim summary loaded: ${data.n_files} files`);
+  } catch {
+    addLog("Cannot connect to backend or /trim-summary does not exist. Restart FastAPI and check api.py.");
+  }
+};
 
   async function loadFitsPreviewFromFolder(folderPath: string) {
   try {
@@ -382,7 +422,6 @@ const clearAllMarkers = () => {
           zoomLevel={zoomLevel}
           onViewerClick={handleViewerClick}
           onRefresh={() => setPreviewVersion((v) => v + 1)}
-          onResults={() => setActiveTab("results")}
           selectedMarkers={selectedMarkers}
           fitsDownsample={fitsDownsample}
         />
@@ -421,6 +460,9 @@ const clearAllMarkers = () => {
                 setImageProcessingPreviewStep={setImageProcessingPreviewStep}
 
                 runTrimOnly={runTrimOnly}
+                trimSummary={trimSummary}
+                loadTrimSummary={loadTrimSummary}
+
                 runCosmicRayOnly={runCosmicOnly}
                 runAlignmentOnly={runAlignmentOnly}
 
@@ -428,6 +470,9 @@ const clearAllMarkers = () => {
                 yStar={yStar}
                 setXStar={setXStar}
                 setYStar={setYStar}
+
+                useCommonMinSize={useCommonMinSize}
+                setUseCommonMinSize={setUseCommonMinSize}
 
               />
             )}
@@ -473,10 +518,6 @@ const clearAllMarkers = () => {
                 setImagePath={setImagePath}
                 runPlotLightCurve={plotOnly}
               />
-            )}
-
-            {activeTab === "results" && (
-              <ResultsPanel logs={logs} />
             )}
 
             <div className="mt-6 border-t border-slate-300 pt-4">

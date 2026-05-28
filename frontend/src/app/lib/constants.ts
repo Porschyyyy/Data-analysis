@@ -32,7 +32,6 @@ export const tabs: TabItem[] = [
   { key: "stars", label: "Star Selection" },
   { key: "photometry", label: "Photometry" },
   { key: "lightcurve", label: "Light Curve" },
-  { key: "results", label: "Results / Log" },
 ];
 
 export const topMenuButtons: MenuButton[] = [

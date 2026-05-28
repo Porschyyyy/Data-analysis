@@ -61,6 +61,11 @@ export function handleViewerClick(
     activeTool: ToolKey;
     clickMode: ClickMode;
     comparisonTargetCount: number;
+    selectedMarkers: {
+      x: number;
+      y: number;
+      type: "target" | "comparison" | "reference";
+    }[];
     setClickMode: (mode: ClickMode) => void;
     positionsText: string;
     addLog: AddLog;
@@ -144,7 +149,9 @@ export function handleViewerClick(
 
       if (!Array.isArray(positions)) return;
 
-      const currentComparisonCount = Math.max(positions.length - 1, 0);
+      const currentComparisonCount = ctx.selectedMarkers.filter(
+        (marker) => marker.type === "comparison"
+      ).length;
 
       if (currentComparisonCount >= ctx.comparisonTargetCount) {
         ctx.setClickMode(null);
@@ -158,8 +165,7 @@ export function handleViewerClick(
       }
 
       positions.push([roundedX, roundedY]);
-      const comparisonCount = positions.length - 1;
-
+      const comparisonCount = currentComparisonCount + 1;
       ctx.setPositionsText(JSON.stringify(positions, null, 2));
 
       ctx.setSelectedMarkers((prev) => [

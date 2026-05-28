@@ -31,7 +31,7 @@ from calibration import (
     calibrate_light_files,
 )
 
-from trim_utils import run_center_trim
+from trim_utils import run_center_trim, summarize_image_shapes
 from cosmic_ray import run_cosmic_ray_removal
 from alignment import run_centroid_alignment
 from photometry import run_aperture_photometry
@@ -41,6 +41,8 @@ from plot_lightcurve import (
     plot_lightcurve_both_styles,
     plot_phase_folded_lightcurve,
 )
+
+from transit_model import fit_transit
 
 PIPELINE_PROGRESS = {
     "current": 0,
@@ -665,6 +667,12 @@ def api_run_calibration(req: CalibrationRequest):
             trim_slice=trim_slice,
             combine_method=req.combine_method,
             skip_existing=False,
+            progress_callback=lambda current, total, message: set_progress(
+                current,
+                total,
+                message,
+                True,
+                "master_bias")
         )
 
     set_progress(0, len(fits_files), "Creating master dark...", True, "calibration")
@@ -684,7 +692,14 @@ def api_run_calibration(req: CalibrationRequest):
             trim_slice=trim_slice,
             combine_method=req.combine_method,
             skip_existing=False,
+            progress_callback=lambda current, total, message: set_progress(
+                current,
+                total,
+                message,
+                True,
+                "master_dark")
         )
+        
 
         master_darks[group_value] = output_file
 
@@ -705,6 +720,12 @@ def api_run_calibration(req: CalibrationRequest):
             trim_slice=trim_slice,
             combine_method=req.combine_method,
             skip_existing=False,
+            progress_callback=lambda current, total, message: set_progress(
+                current,
+                total,
+                message,
+                True,
+                "master_flat")
         )
 
         master_flats[group_value] = output_file
@@ -716,6 +737,7 @@ def api_run_calibration(req: CalibrationRequest):
     calibrated_groups = []
 
     processed_light = 0
+    set_progress(0, n_light, "Starting light calibration...", True, "calibration")
 
     for light_group_value, light_files in groups["light"].items():
         light_meta = group_value_to_dict(
@@ -754,7 +776,7 @@ def api_run_calibration(req: CalibrationRequest):
                 "calibration",
             ),
             progress_start=processed_light,
-            progress_total=sum(len(files) for files in groups["light"].values()),
+            progress_total=n_light,
         )
 
         processed_light += len(light_files)
@@ -768,12 +790,12 @@ def api_run_calibration(req: CalibrationRequest):
         })
 
         set_progress(
-            len(fits_files),
-            len(fits_files),
-            "Calibration completed",
+            n_light,
+            n_light,
+            "Light calibration completed",
             False,
             "calibration",
-        )
+        )   
 
 
     return {
@@ -842,6 +864,49 @@ def api_run_trim(req: TrimRequest):
         "result": str(result),
     }
 
+@app.post("/trim-summary")
+def api_trim_summary(req: TrimRequest):
+    input_path = Path(req.input_path)
+
+    if not input_path.exists():
+        raise HTTPException(status_code=404, detail=f"input_path not found: {input_path}")
+
+    fits_files = get_fits_files(input_path)
+
+    if len(fits_files) == 0:
+        raise HTTPException(status_code=404, detail="No FITS files found")
+
+    df_shape, min_width, min_height, max_width, max_height = summarize_image_shapes(fits_files)
+
+    raw_size_counts = (
+        df_shape.groupby(["NAXIS1", "NAXIS2"])
+        .size()
+        .reset_index(name="count")
+        .to_dict(orient="records")
+    )
+
+    size_counts = [
+        {
+            "width": int(item["NAXIS1"]),
+            "height": int(item["NAXIS2"]),
+            "count": int(item["count"]),
+        }
+        for item in raw_size_counts
+    ]
+
+    return {
+        "status": "done",
+        "n_files": int(len(fits_files)),
+        "size_counts": size_counts,
+        "crop_target": {
+            "width": int(min_width),
+            "height": int(min_height),
+        },
+        "min_width": int(min_width),
+        "min_height": int(min_height),
+        "max_width": int(max_width),
+        "max_height": int(max_height),
+    }
 
 # ==================================================
 # Cosmic Ray Removal
@@ -1326,3 +1391,13 @@ def api_preview_fits(
 @app.get("/progress")
 def get_progress():
     return PIPELINE_PROGRESS
+
+@app.post("/fit-transit")
+def fit_transit_api(data: dict):
+
+    time = np.array(data["time"])
+    flux = np.array(data["flux"])
+
+    result = fit_transit(time, flux)
+
+    return result

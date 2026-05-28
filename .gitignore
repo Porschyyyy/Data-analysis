@@ -5,10 +5,18 @@ __pycache__/
 
 # FITS / astronomy data
 raw/
+raw_test/
+
 output/
 output_1/
+output_test/
+
 *.fits
 *.fit
+
+# Generated results
+*.png
+*.csv
 
 # Next.js
 frontend/node_modules/

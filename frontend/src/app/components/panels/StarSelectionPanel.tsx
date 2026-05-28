@@ -157,17 +157,62 @@ export function StarSelectionPanel({
       </div>
 
       <label className="block">
-        <span className="text-sm font-medium">Photometry positions JSON</span>
-        <textarea
-          value={positionsText}
-          onChange={(e) => setPositionsText(e.target.value)}
-          rows={9}
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs"
-        />
+        <span className="text-sm font-medium">Photometry positions</span>
+        <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-100 text-slate-700">
+              <tr>
+                <th className="px-3 py-2 text-left">Star</th>
+                <th className="px-3 py-2 text-left">X</th>
+                <th className="px-3 py-2 text-left">Y</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {(() => {
+                try {
+                  const positions = JSON.parse(positionsText);
+
+                  return positions.map((pos: number[], index: number) => (
+                    <tr
+                      key={index}
+                      className="border-t border-slate-200"
+                    >
+                      <td className="px-3 py-2 font-medium">
+                        {index === 0
+                          ? "Target"
+                          : `Comparison ${index}`}
+                      </td>
+
+                      <td className="px-3 py-2">
+                        {Number(pos[0]).toFixed(2)}
+                      </td>
+
+                      <td className="px-3 py-2">
+                        {Number(pos[1]).toFixed(2)}
+                      </td>
+                    </tr>
+                  ));
+                } catch {
+                  return (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="px-3 py-3 text-center text-slate-400"
+                      >
+                        No star positions selected
+                      </td>
+                    </tr>
+                  );
+                }
+              })()}
+            </tbody>
+          </table>
+        </div>
       </label>
 
       <p className="text-xs text-slate-500">
-        ตัวแรกคือ target star ตัวถัดไปคือ comparison stars
+        The first position corresponds to the target star, while the remaining positions correspond to comparison stars.
       </p>
     </div>
   );

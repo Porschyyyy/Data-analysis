@@ -135,7 +135,13 @@ def run_center_trim(
 
     if len(fits_files) == 0:
         print("No FITS files found for trimming")
-        return
+        return {
+            "n_files": 0,
+            "target_width": None,
+            "target_height": None,
+            "use_common_min_size": use_common_min_size,
+            "message": "No FITS files found for trimming",
+        }
 
     df_shape, min_width, min_height, max_width, max_height = summarize_image_shapes(fits_files)
 
@@ -179,9 +185,27 @@ def run_center_trim(
 
         if progress_callback is not None:
             progress_callback(
-            i,
-            len(fits_files),
-            f"Trimming {Path(input_file).name}",
-        )
+                i,
+                len(fits_files),
+                f"Running Trim : {Path(input_file).name}",
+            )
 
     print("\nCenter trim finished")
+
+    return {
+        "n_files": len(fits_files),
+        "target_width": int(target_width),
+        "target_height": int(target_height),
+        "use_common_min_size": use_common_min_size,
+        "min_width": int(min_width),
+        "min_height": int(min_height),
+        "max_width": int(max_width),
+        "max_height": int(max_height),
+        "trim_box": {
+            "x0": int(x0),
+            "x1": int(x1),
+            "y0": int(y0),
+            "y1": int(y1),
+        },
+        "message": "Center trim finished",
+    }

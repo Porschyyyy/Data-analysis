@@ -29,6 +29,7 @@ type BaseActionContext = {
   plotStyle: PlotStyle;
   graphTitle: string;
   usePreset: boolean;
+  useCommonMinSize: boolean;
   addLog: AddLog;
   setActiveTab: (tab: TabKey) => void;
   setActiveStep: (step: string) => void;
@@ -138,7 +139,7 @@ export async function runPipeline(ctx: BaseActionContext & { runUntil: StepKey }
 
       if (step.key === "headers") await callApi("/read-headers", headersPayload(ctx.rawPath), ctx.addLog);
       if (step.key === "calibration") await callApi("/run-calibration", calibrationPayload(ctx.rawPath, ctx.outputPath), ctx.addLog);
-      if (step.key === "trim") await callApi("/run-trim", trimPayload(ctx.outputPath), ctx.addLog);
+      if (step.key === "trim") await callApi("/run-trim", trimPayload(ctx.outputPath, ctx.useCommonMinSize), ctx.addLog);
       if (step.key === "cosmic") await callApi("/run-cosmic-ray", cosmicPayload(ctx.outputPath), ctx.addLog);
       if (step.key === "alignment") await callApi("/run-alignment", alignmentPayload(ctx.outputPath, x, y), ctx.addLog);
       if (step.key === "photometry") {
@@ -230,7 +231,7 @@ export async function runCalibrationOnly(ctx: BaseActionContext) {
 
 export async function runTrimOnly(ctx: BaseActionContext) {
   if (!requireOutputPath(ctx.outputPath, ctx.addLog, ctx.setActiveTab)) return;
-  await runSingleStep("trim", ctx, () => callApi("/run-trim", trimPayload(ctx.outputPath), ctx.addLog));
+  await runSingleStep("trim", ctx, () => callApi("/run-trim", trimPayload(ctx.outputPath, ctx.useCommonMinSize), ctx.addLog));
 }
 
 export async function runCosmicOnly(ctx: BaseActionContext) {

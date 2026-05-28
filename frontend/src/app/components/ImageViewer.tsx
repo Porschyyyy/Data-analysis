@@ -12,7 +12,6 @@ type ImageViewerProps = {
   zoomLevel: number;
   onViewerClick: (event: ViewerClickEvent) => void;
   onRefresh: () => void;
-  onResults: () => void;
   selectedMarkers: {
     x: number;
     y: number;
@@ -32,7 +31,6 @@ export function ImageViewer({
   zoomLevel,
   onViewerClick,
   onRefresh,
-  onResults,
   selectedMarkers,
   fitsDownsample,
 }: ImageViewerProps) {
@@ -55,13 +53,6 @@ export function ImageViewer({
             Refresh
           </button>
 
-          <button
-            type="button"
-            onClick={onResults}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold hover:bg-slate-100"
-          >
-            Results
-          </button>
         </div>
       </div>
 

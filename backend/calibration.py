@@ -113,7 +113,8 @@ def create_master_bias(
     overscan_slice=None,
     trim_slice=None,
     combine_method="median",
-    skip_existing=False):
+    skip_existing=False,
+    progress_callback=None):
 
     output_file = Path(output_file)
 
@@ -129,18 +130,45 @@ def create_master_bias(
         print("No bias files found")
         return None
 
+    stack = []
+    sum_image = None
+    count = 0
+
+    for i, file_path in enumerate(bias_files, start=1):
+        data = preprocess_image(
+            file_path,
+            overscan_slice=overscan_slice,
+            trim_slice=trim_slice,
+        )
+
+        if progress_callback is not None:
+            progress_callback(
+                i,
+                len(bias_files),
+                f"Creating master bias {i}/{len(bias_files)}: {Path(file_path).name}",
+            )
+
+        if combine_method == "median":
+            stack.append(data.astype(np.float32))
+
+        elif combine_method == "mean":
+            if sum_image is None:
+                sum_image = np.zeros_like(data, dtype=np.float64)
+
+            sum_image += data
+            count += 1
+
+        else:
+            raise ValueError("combine_method must be 'median' or 'mean'")
+
     if combine_method == "median":
-        master_bias = combine_median(
-            bias_files,
-            overscan_slice=overscan_slice,
-            trim_slice=trim_slice
-        )
+        master_bias = np.nanmedian(
+            np.asarray(stack, dtype=np.float32),
+            axis=0,
+        ).astype(np.float32)
+
     elif combine_method == "mean":
-        master_bias = combine_mean_streaming(
-            bias_files,
-            overscan_slice=overscan_slice,
-            trim_slice=trim_slice
-        )
+        master_bias = (sum_image / count).astype(np.float32)
     else:
         raise ValueError("combine_method must be 'median' or 'mean'")
 
@@ -160,7 +188,8 @@ def create_master_dark(
     overscan_slice=None,
     trim_slice=None,
     combine_method="median",
-    skip_existing=False):
+    skip_existing=False,
+    progress_callback=None):
 
     output_file = Path(output_file)
 
@@ -178,7 +207,7 @@ def create_master_dark(
     calibrated_stack = []
 
     if combine_method == "median":
-        for file_path in dark_files:
+        for i, file_path in enumerate(dark_files, start=1):
             data = preprocess_image(
                 file_path,
                 overscan_slice=overscan_slice,
@@ -187,6 +216,13 @@ def create_master_dark(
 
             if master_bias is not None:
                 data = data - master_bias
+
+            if progress_callback is not None:
+                progress_callback(
+                    i,
+                    len(dark_files),
+                    f"Creating master dark {i}/{len(dark_files)}: {Path(file_path).name}",
+                )
 
             calibrated_stack.append(data.astype(np.float32))
 
@@ -200,7 +236,7 @@ def create_master_dark(
         sum_image = None
         count = 0
 
-        for file_path in dark_files:
+        for i, file_path in enumerate(dark_files, start=1):
             data = preprocess_image(
                 file_path,
                 overscan_slice=overscan_slice,
@@ -209,6 +245,13 @@ def create_master_dark(
 
             if master_bias is not None:
                 data = data - master_bias
+
+            if progress_callback is not None:
+                progress_callback(
+                    i,
+                    len(dark_files),
+                    f"Creating master dark {i}/{len(dark_files)}: {Path(file_path).name}",
+                )
 
             if sum_image is None:
                 sum_image = np.zeros_like(data, dtype=np.float32)
@@ -240,7 +283,8 @@ def create_master_flat(
     overscan_slice=None,
     trim_slice=None,
     combine_method="median",
-    skip_existing=False):
+    skip_existing=False,
+    progress_callback=None):
 
     output_file = Path(output_file)
 
@@ -258,7 +302,7 @@ def create_master_flat(
     calibrated_stack = []
 
     if combine_method == "median":
-        for file_path in flat_files:
+        for i, file_path in enumerate(flat_files, start=1):
             data = preprocess_image(
                 file_path,
                 overscan_slice=overscan_slice,
@@ -275,6 +319,13 @@ def create_master_flat(
 
             if median_value != 0:
                 data = data / median_value
+
+            if progress_callback is not None:
+                progress_callback(
+                    i,
+                    len(flat_files),
+                    f"Creating master flat {i}/{len(flat_files)}: {Path(file_path).name}",
+                )
 
             calibrated_stack.append(data.astype(np.float32))
 
@@ -288,7 +339,7 @@ def create_master_flat(
         sum_image = None
         count = 0
 
-        for file_path in flat_files:
+        for i, file_path in enumerate(flat_files, start=1):
             data = preprocess_image(
                 file_path,
                 overscan_slice=overscan_slice,
@@ -305,6 +356,13 @@ def create_master_flat(
 
             if median_value != 0:
                 data = data / median_value
+
+            if progress_callback is not None:
+                progress_callback(
+                    i,
+                    len(flat_files),
+                    f"Creating master flat {i}/{len(flat_files)}: {Path(file_path).name}",
+                )
 
             if sum_image is None:
                 sum_image = np.zeros_like(data, dtype=np.float32)
@@ -319,7 +377,6 @@ def create_master_flat(
     else:
         raise ValueError("combine_method must be 'median' or 'mean'")
 
-    # normalize master flat อีกครั้ง
     norm = np.nanmedian(master_flat)
 
     if norm != 0:
