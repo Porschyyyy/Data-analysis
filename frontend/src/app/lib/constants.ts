@@ -13,8 +13,10 @@ import {
 
 
 
-export const API_BASE = "http://127.0.0.1:8000";
-
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ??
+  "http://127.0.0.1:8000";
+  
 export const pipelineSteps: PipelineStep[] = [
   { key: "headers", label: "Import / Headers" },
   { key: "calibration", label: "Master + Calibrated" },

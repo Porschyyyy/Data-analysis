@@ -2,6 +2,9 @@ services:
   backend:
     build:
       context: ./backend
+
+    env_file:
+      - .env.docker
     container_name: astropipeline-backend
     ports:
       - "8000:8000"
@@ -11,6 +14,9 @@ services:
   frontend:
     build:
       context: ./frontend
+
+    env_file:
+      - .env.docker
     container_name: astropipeline-frontend
     ports:
       - "3002:3002"
