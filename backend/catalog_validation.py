@@ -24,8 +24,7 @@ def pixel_to_radec(fits_file, x, y):
 
     if not wcs.has_celestial:
         raise ValueError(
-            "This FITS file has no valid WCS. Plate solve first before catalog validation."
-        )
+            "This FITS file has no valid WCS. Plate solve first before catalog validation.")
 
     ra, dec = wcs.pixel_to_world_values(float(x), float(y))
     return float(ra), float(dec)
@@ -33,14 +32,12 @@ def pixel_to_radec(fits_file, x, y):
 
 def query_gaia_catalog(ra, dec, radius_arcsec=3.0):
     Vizier.ROW_LIMIT = 5
-
     coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
 
     result = Vizier.query_region(
         coord,
         radius=radius_arcsec * u.arcsec,
-        catalog="I/355/gaiadr3",
-    )
+        catalog="I/355/gaiadr3",)
 
     if len(result) == 0:
         return None
@@ -56,16 +53,10 @@ def query_gaia_catalog(ra, dec, radius_arcsec=3.0):
         "catalog": "Gaia DR3",
         "source_id": str(row["Source"]),
         "catalog_mag": float(row["Gmag"]),
-        "catalog_mag_band": "G",
-    }
+        "catalog_mag_band": "G",}
 
 
 def collect_measured_stars(df):
-    """
-    ใช้ median ของตำแหน่งและ inst_mag ของ target/comp stars
-    จาก photometry_results.csv
-    """
-
     stars = []
 
     # target
@@ -129,20 +120,17 @@ def run_catalog_validation(
         ra, dec = pixel_to_radec(
             fits_file=fits_file,
             x=star["x"],
-            y=star["y"],
-        )
+            y=star["y"])
 
         catalog = query_gaia_catalog(
             ra=ra,
             dec=dec,
-            radius_arcsec=radius_arcsec,
-        )
+            radius_arcsec=radius_arcsec)
 
         row = {
             **star,
             "ra_deg": ra,
-            "dec_deg": dec,
-        }
+            "dec_deg": dec}
 
         if catalog is None:
             row.update({
@@ -150,26 +138,22 @@ def run_catalog_validation(
                 "source_id": None,
                 "catalog_mag": np.nan,
                 "catalog_mag_band": None,
-                "individual_zeropoint": np.nan,
-            })
+                "individual_zeropoint": np.nan})
         else:
             individual_zp = catalog["catalog_mag"] - star["inst_mag"]
 
             row.update({
                 **catalog,
-                "individual_zeropoint": individual_zp,
-            })
+                "individual_zeropoint": individual_zp})
 
         rows.append(row)
 
     result_df = pd.DataFrame(rows)
 
-    # ใช้เฉพาะ comparison stars หา zeropoint กลาง
     comp_mask = result_df["star_name"].astype(str).str.startswith("comp")
     valid_comp = result_df[
         comp_mask
-        & np.isfinite(result_df["individual_zeropoint"])
-    ]
+        & np.isfinite(result_df["individual_zeropoint"])]
 
     if len(valid_comp) == 0:
         raise ValueError("No valid comparison stars with catalog match found.")
@@ -180,16 +164,12 @@ def run_catalog_validation(
     result_df["zeropoint_median"] = zeropoint_median
     result_df["zeropoint_std"] = zeropoint_std
 
-    # calibrated magnitude จาก zeropoint กลาง
     result_df["calibrated_mag"] = (
-        result_df["inst_mag"] + zeropoint_median
-    )
+        result_df["inst_mag"] + zeropoint_median)
 
     result_df["mag_error"] = (
-        result_df["calibrated_mag"] - result_df["catalog_mag"]
-    )
+        result_df["calibrated_mag"] - result_df["catalog_mag"])
 
-    # สรุป error ของ comparison stars
     comp_errors = result_df.loc[comp_mask, "mag_error"]
     comp_errors = comp_errors[np.isfinite(comp_errors)]
 
@@ -205,17 +185,11 @@ def run_catalog_validation(
 
     result_df.to_csv(output_csv, index=False)
 
-    print("\nSaved catalog validation:")
-    print(output_csv)
-    print("Zeropoint median:", zeropoint_median)
-    print("Zeropoint std   :", zeropoint_std)
-    print("Comparison RMSE :", comparison_rmse)
-    print("Comparison MAE  :", comparison_mae)
-
-    return result_df
-
-
-if __name__ == "__main__":
-    run_catalog_validation(
-        photometry_csv="../output/photometry/photometry_results.csv",
-    )
+    return {
+        "result_df": result_df,
+        "zeropoint_median": zeropoint_median,
+        "zeropoint_std": zeropoint_std,
+        "comparison_rmse": comparison_rmse,
+        "comparison_mae": comparison_mae,
+        "output_csv": str(output_csv),
+    }

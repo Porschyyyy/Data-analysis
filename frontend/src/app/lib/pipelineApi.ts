@@ -20,28 +20,6 @@ export async function callApi(endpoint: string, body: unknown, addLog: AddLog) {
   return data;
 }
 
-export async function chooseFolderRequest(
-  target: "raw" | "output",
-  currentPath: string,
-  addLog: AddLog
-) {
-  const title = target === "raw" ? "เลือกโฟลเดอร์ raw FITS" : "เลือกโฟลเดอร์ output";
-  addLog(`OPEN FOLDER DIALOG: ${title}`);
-
-  const res = await fetch(`${API_BASE}/choose-folder`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, initial_dir: currentPath || null }),
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data.detail || "Folder dialog error");
-  }
-
-  return data as { path?: string | null };
-}
 
 export async function listFitsRequest(inputPath: string, addLog: AddLog) {
   const data = await callApi("/list-fits", { input_path: inputPath }, addLog)

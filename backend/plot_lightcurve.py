@@ -4,84 +4,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def ask_yes_no(prompt, default=True):
-    suffix = " [Y/n]: " if default else " [y/N]: "
-    value = input(prompt + suffix).strip().lower()
-
-    if value == "":
-        return default
-
-    return value in ["y", "yes", "ใช่", "เอา"]
-
-
-def ask_optional_float(prompt):
-    value = input(prompt).strip()
-
-    if value == "":
-        return None
-
-    try:
-        return float(value)
-    except ValueError:
-        print("ค่าที่กรอกไม่ใช่ตัวเลข จะใช้ None แทน")
-        return None
-    
-
-def ask_plot_style():
-    print("\nเลือกรูปแบบกราฟ light curve:")
-    print("1 = Academic style: จุดข้อมูล + error bar + residual panel")
-    print("2 = Line style: เส้นล้วน ไม่มีจุดข้อมูล ไม่มี error bar")
-
-    choice = input("เลือก 1/2 [1]: ").strip()
-
-    if choice == "":
-        choice = "1"
-
-    if choice not in ["1", "2"]:
-        print("เลือกไม่ถูกต้อง จะใช้แบบ 1 แทน")
-        choice = "1"
-
-    return choice
-
-
-def compute_nearest_mid_transit(start_jd, end_jd, t0, period):
-    data_mid = (start_jd + end_jd) / 2.0
-    epoch = round((data_mid - t0) / period)
-    mid_transit_jd = t0 + epoch * period
-
-    return mid_transit_jd, epoch
-
-
-def get_transit_info_from_data(df):
-    if "time" not in df.columns:
-        print("ไม่พบคอลัมน์ time")
-        return None, None
-
-    time_values = pd.to_numeric(df["time"], errors="coerce").dropna()
-
-    if len(time_values) == 0:
-        print("ไม่มีค่า time ที่ใช้ได้")
-        return None, None
-
-    start_jd = float(time_values.min())
-    end_jd = float(time_values.max())
-    center_jd = (start_jd + end_jd) / 2.0
-    duration_days = end_jd - start_jd
-    duration_hours = duration_days * 24.0
-
-    print("\n========== DATA TIME INFORMATION ==========")
-    print(f"Start JD    : {start_jd}")
-    print(f"End JD      : {end_jd}")
-    print(f"Center JD   : {center_jd}")
-    print(f"Duration    : {duration_days:.8f} days")
-    print(f"Duration    : {duration_hours:.3f} hours")
-    print("Expected transit: not shown by default")
-    print("ถ้าต้องการ expected transit ให้ใช้ Exoplanet Archive หรือกรอกค่าเอง")
-    print("==========================================\n")
-
-    return None, None
-
-
 def choose_auto_bin_size(n_points):
     if n_points < 30:
         return 3
@@ -107,7 +29,8 @@ def choose_auto_sigma_clip(n_points):
 
     return 3.5
 
-
+# Remove outliers using robust MAD-based sigma clipping.
+# This helps reduce the impact of bad photometric measurements.
 def robust_sigma_clip(y, sigma):
     y = np.asarray(y, dtype=float)
 
@@ -123,6 +46,8 @@ def robust_sigma_clip(y, sigma):
     return np.isfinite(y) & (z <= sigma)
 
 
+# Bin photometric measurements to reduce scatter
+# and improve light curve readability.
 def bin_lightcurve(time, flux, bin_size):
     time = np.asarray(time, dtype=float)
     flux = np.asarray(flux, dtype=float)
@@ -158,10 +83,11 @@ def bin_lightcurve(time, flux, bin_size):
     return (
         np.array(binned_time),
         np.array(binned_flux),
-        np.array(binned_flux_err),
-    )
+        np.array(binned_flux_err))
 
 
+# Compute RMS scatter in parts-per-million (ppm)
+# as a basic photometric precision metric.
 def compute_rms_ppm(flux):
     flux = np.asarray(flux, dtype=float)
     flux = flux[np.isfinite(flux)]
@@ -173,6 +99,7 @@ def compute_rms_ppm(flux):
     return rms * 1e6
 
 
+# Estimate suitable y-axis limits for plotting.
 def auto_ylim(values, min_half_range=0.0015):
     values = np.asarray(values, dtype=float)
     values = values[np.isfinite(values)]
@@ -189,6 +116,7 @@ def auto_ylim(values, min_half_range=0.0015):
     return center - half_range, center + half_range
 
 
+# Compute moving average trend for visualization.
 def moving_average(y, window=3):
     y = np.asarray(y, dtype=float)
 
@@ -199,21 +127,19 @@ def moving_average(y, window=3):
         pd.Series(y)
         .rolling(window=window, center=True, min_periods=1)
         .mean()
-        .to_numpy()
-    )
+        .to_numpy())
 
 
 def plot_lightcurve(
     photometry_csv: str | Path,
     output_png: str | Path,
-    show: bool = True,
     remove_first_point: bool = False,
     remove_outliers: bool = True,
     sigma_clip: float | None = None,
     bin_size: int | None = None,
     mid_transit_jd: float | None = None,
     transit_duration_hours: float | None = None,
-    plot_style: str = "1",
+    plot_style: str = "academic",
     title: str | None = None,
 ):
     photometry_csv = Path(photometry_csv)
@@ -231,8 +157,7 @@ def plot_lightcurve(
         if col not in df.columns:
             raise ValueError(
                 f"Missing column '{col}' in {photometry_csv}. "
-                f"Available columns: {list(df.columns)}"
-            )
+                f"Available columns: {list(df.columns)}")
 
     df["time"] = pd.to_numeric(df["time"], errors="coerce")
     df["normalized_flux"] = pd.to_numeric(df["normalized_flux"], errors="coerce")
@@ -260,12 +185,7 @@ def plot_lightcurve(
     if remove_outliers:
         good_mask = robust_sigma_clip(
             df["normalized_flux"].to_numpy(),
-            sigma=sigma_clip,
-        )
-
-        removed = len(df) - int(np.sum(good_mask))
-        print(f"Auto sigma clip = {sigma_clip}")
-        print(f"Removed outliers for plot: {removed}")
+            sigma=sigma_clip)
 
         df = df.loc[good_mask].reset_index(drop=True)
 
@@ -275,8 +195,7 @@ def plot_lightcurve(
     binned_time, binned_flux, binned_err = bin_lightcurve(
         time=df["time_hour"].to_numpy(),
         flux=df["normalized_flux"].to_numpy(),
-        bin_size=bin_size,
-    )
+        bin_size=bin_size)
 
     residuals = df["normalized_flux"].to_numpy() - 1.0
     binned_residuals = binned_flux - 1.0
@@ -290,13 +209,11 @@ def plot_lightcurve(
         nrows=2,
         ncols=1,
         height_ratios=[3.2, 1.2],
-        hspace=0.05,
-    )
+        hspace=0.05)
 
     ax1 = fig.add_subplot(gs[0])
     ax2 = fig.add_subplot(gs[1], sharex=ax1)
 
-    # วาด expected transit เฉพาะถ้ามีค่า
     if mid_transit_jd is not None and transit_duration_hours is not None:
         x_mid_transit = (mid_transit_jd - first_jd) * 24.0
         half_dur = transit_duration_hours / 2.0
@@ -309,11 +226,9 @@ def plot_lightcurve(
         ax1.axvline(x_mid_transit, linestyle="--", linewidth=1)
         ax2.axvline(x_mid_transit, linestyle="--", linewidth=1)
 
-    # ==============================
+
     # Plot main light curve
-    # ==============================
-    if plot_style == "1":
-        # Academic style: จุดข้อมูล + error bar
+    if plot_style == "academic":
         ax1.plot(
             df["time_hour"],
             df["normalized_flux"],
@@ -321,8 +236,7 @@ def plot_lightcurve(
             linestyle="none",
             markersize=4,
             alpha=0.35,
-            label="Normalized flux",
-        )
+            label="Normalized flux")
 
         ax1.errorbar(
             binned_time,
@@ -333,15 +247,12 @@ def plot_lightcurve(
             linewidth=1.3,
             markersize=5,
             capsize=2,
-            label=f"Binned ({bin_size} points/bin)",
-        )
+            label=f"Binned ({bin_size} points/bin)")
 
-    else:
-        # Line style: เส้นล้วน ไม่มีจุด ไม่มี error bar
+    elif plot_style == "line":
         smooth_flux = moving_average(
             df["normalized_flux"].to_numpy(),
-            window=3,
-        )
+            window=3)
 
         ax1.plot(
             df["time_hour"],
@@ -349,8 +260,7 @@ def plot_lightcurve(
             linestyle="-",
             linewidth=1.5,
             alpha=0.75,
-            label="Light curve",
-        )
+            label="Light curve")
 
         ax1.plot(
             binned_time,
@@ -358,23 +268,19 @@ def plot_lightcurve(
             linestyle="-",
             linewidth=2.2,
             alpha=1.0,
-            label=f"Binned light curve ({bin_size} points/bin)",
-        )
+            label=f"Binned light curve ({bin_size} points/bin)")
 
     ax1.axhline(1.0, linestyle="--", linewidth=1)
 
-    # ==============================
     # Plot residual panel
-    # ==============================
-    if plot_style == "1":
+    if plot_style == "academic":
         ax2.plot(
             df["time_hour"],
             residuals,
             marker="o",
             linestyle="none",
             markersize=3,
-            alpha=0.25,
-        )
+            alpha=0.25)
 
         ax2.errorbar(
             binned_time,
@@ -384,30 +290,26 @@ def plot_lightcurve(
             linestyle="-",
             linewidth=1.0,
             markersize=4,
-            capsize=2,
-        )
+            capsize=2)
 
-    else:
+    elif plot_style == "line":
         smooth_residuals = moving_average(
             residuals,
-            window=3,
-        )
+            window=3)
 
         ax2.plot(
             df["time_hour"],
             smooth_residuals,
             linestyle="-",
             linewidth=1.0,
-            alpha=0.45,
-        )
+            alpha=0.45)
 
         ax2.plot(
             binned_time,
             binned_residuals,
             linestyle="-",
             linewidth=1.8,
-            alpha=1.0,
-        )
+            alpha=1.0)
 
     ax2.axhline(0.0, linestyle="--", linewidth=1)
 
@@ -415,7 +317,6 @@ def plot_lightcurve(
     ax2.set_ylabel("Residual")
     ax2.set_xlabel("Time from first exposure (hours)")
     ax1.set_title(title or "Light Curve")
-
 
     x_min = df["time_hour"].min()
     x_max = df["time_hour"].max()
@@ -427,8 +328,7 @@ def plot_lightcurve(
         np.concatenate([
             df["normalized_flux"].to_numpy(),
             binned_flux,
-        ])
-    )
+        ]))
 
     if y_lim is not None:
         ax1.set_ylim(*y_lim)
@@ -451,8 +351,7 @@ def plot_lightcurve(
         f"Auto binning = {bin_size} points/bin",
         f"Unbinned RMS = {rms_unbinned_ppm:.0f} ppm",
         f"Binned RMS = {rms_binned_ppm:.0f} ppm",
-        f"N = {len(df)} points",
-    ]
+        f"N = {len(df)} points"]
 
     if mid_transit_jd is None or transit_duration_hours is None:
         text_lines.append("Expected transit: not shown")
@@ -465,86 +364,16 @@ def plot_lightcurve(
         va="top",
         ha="left",
         fontsize=9,
-        bbox=dict(boxstyle="round", alpha=0.12),
-    )
+        bbox=dict(boxstyle="round", alpha=0.12))
 
     plt.setp(ax1.get_xticklabels(), visible=False)
 
     fig.tight_layout()
     fig.savefig(output_png, dpi=300, bbox_inches="tight")
 
-    if show:
-        plt.show()
-
     plt.close(fig)
 
-    print(f"Saved light curve to: {output_png}")
-
-    binned_csv = output_png.with_name("lightcurve_binned.csv")
-
-    binned_df = pd.DataFrame({
-        "time_hour": binned_time,
-        "binned_flux": binned_flux,
-        "binned_flux_err": binned_err,
-    })
-
-    binned_df.to_csv(binned_csv, index=False)
-    print(f"Saved binned light curve to: {binned_csv}")
-
     return output_png
-
-
-def plot_lightcurve_both_styles(
-    photometry_csv: str | Path,
-    output_dir: str | Path,
-    show: bool = False,
-    remove_first_point: bool = False,
-    remove_outliers: bool = True,
-    sigma_clip: float | None = None,
-    bin_size: int | None = None,
-    mid_transit_jd: float | None = None,
-    transit_duration_hours: float | None = None,
-    title: str | None = None,
-):
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    academic_png = output_dir / "lightcurve_academic.png"
-    line_png = output_dir / "lightcurve_line.png"
-
-    plot_lightcurve(
-        photometry_csv=photometry_csv,
-        output_png=academic_png,
-        show=show,
-        remove_first_point=remove_first_point,
-        remove_outliers=remove_outliers,
-        sigma_clip=sigma_clip,
-        bin_size=bin_size,
-        mid_transit_jd=mid_transit_jd,
-        transit_duration_hours=transit_duration_hours,
-        plot_style="1",
-        title=title,
-    )
-
-    plot_lightcurve(
-        photometry_csv=photometry_csv,
-        output_png=line_png,
-        show=show,
-        remove_first_point=remove_first_point,
-        remove_outliers=remove_outliers,
-        sigma_clip=sigma_clip,
-        bin_size=bin_size,
-        mid_transit_jd=mid_transit_jd,
-        transit_duration_hours=transit_duration_hours,
-        plot_style="2",
-        title=title,
-    )
-
-    return {
-        "academic_png": str(academic_png),
-        "line_png": str(line_png),
-    }
 
 
 def plot_phase_folded_lightcurve(
@@ -552,7 +381,6 @@ def plot_phase_folded_lightcurve(
     output_png: str | Path,
     t0: float,
     period: float,
-    show: bool = True,
     title: str | None = None,
 ):
     photometry_csv = Path(photometry_csv)
@@ -573,7 +401,6 @@ def plot_phase_folded_lightcurve(
 
     phase = ((df["time"] - t0) / period) % 1.0
 
-    # ให้ mid-transit อยู่ที่ phase = 0
     phase = np.where(phase > 0.5, phase - 1.0, phase)
 
     flux = df["normalized_flux"].to_numpy()
@@ -586,8 +413,7 @@ def plot_phase_folded_lightcurve(
         pd.Series(flux)
         .rolling(window=9, center=True, min_periods=1)
         .median()
-        .to_numpy()
-    )
+        .to_numpy())
 
     plt.figure(figsize=(8, 5))
 
@@ -598,16 +424,14 @@ def plot_phase_folded_lightcurve(
         linestyle="none",
         markersize=3,
         alpha=0.35,
-        label="Data",
-    )
+        label="Data")
 
     plt.plot(
         phase,
         smooth_flux,
         linestyle="-",
         linewidth=2,
-        label="Smoothed trend",
-    )
+        label="Smoothed trend")
 
     plt.axhline(1.0, linestyle="--", linewidth=1)
     plt.axvline(0.0, linestyle="--", linewidth=1)
@@ -619,58 +443,6 @@ def plot_phase_folded_lightcurve(
     plt.legend()
     plt.tight_layout()
     plt.savefig(output_png, dpi=300, bbox_inches="tight")
-
-    if show:
-        plt.show()
-
     plt.close()
 
-    print("Saved phase-folded light curve:", output_png)
-
     return output_png
-
-
-def main():
-    base_dir = Path(__file__).resolve().parent
-    project_dir = base_dir.parent
-
-    photometry_csv = project_dir / "output" / "photometry" / "photometry_results.csv"
-    output_png = project_dir / "output" / "photometry" / "lightcurve.png"
-
-    df_for_time = pd.read_csv(photometry_csv)
-    df_for_time["time"] = pd.to_numeric(df_for_time["time"], errors="coerce")
-    df_for_time = df_for_time.dropna(subset=["time"])
-
-    mid_transit_jd, transit_duration_hours = get_transit_info_from_data(df_for_time)
-
-    plot_style = ask_plot_style()
-
-    if plot_style == "1":
-        output_png = project_dir / "output" / "photometry" / "lightcurve_academic.png"
-    else:
-        output_png = project_dir / "output" / "photometry" / "lightcurve_line.png"
-
-    graph_title = input("กรอกชื่อกราฟ หรือกด Enter เพื่อใช้ชื่อ default: ").strip()
-    
-    if graph_title == "":
-        graph_title = None
-        
-    result = plot_lightcurve(
-        photometry_csv=photometry_csv,
-        output_png=output_png,
-        show=True,
-        remove_first_point=False,
-        remove_outliers=True,
-        sigma_clip=None,
-        bin_size=None,
-        mid_transit_jd=mid_transit_jd,
-        transit_duration_hours=transit_duration_hours,
-        plot_style=plot_style,
-        title=graph_title,
-        )
-
-    print(f"Saved light curve to: {result}")
-
-
-if __name__ == "__main__":
-    main()

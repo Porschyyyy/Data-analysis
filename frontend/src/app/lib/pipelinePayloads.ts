@@ -52,8 +52,11 @@ export const photometryPayload = (outputPath: string, positions: number[][]) => 
   auto_params: true,
 });
 
-export function getOutputPng(outputPath: string, plotStyle: PlotStyle) {
-  return plotStyle === "1"
+export function getOutputPng(
+  outputPath: string,
+  plotStyle: PlotStyle
+) {
+  return plotStyle === "academic"
     ? `${outputPath}/photometry/lightcurve_academic.png`
     : `${outputPath}/photometry/lightcurve_line.png`;
 }
@@ -64,12 +67,14 @@ export const lightcurvePayload = ({
   plotStyle,
   graphTitle,
   usePreset,
+  modelType,
 }: {
   outputPath: string;
   outputPng: string;
   plotStyle: PlotStyle;
   graphTitle: string;
   usePreset: boolean;
+  modelType: "data_only" | "transit";
 }) => ({
   photometry_csv: `${outputPath}/photometry/photometry_results.csv`,
   output_png: outputPng,
@@ -83,4 +88,5 @@ export const lightcurvePayload = ({
   use_wasp12b_preset: usePreset,
   plot_style: plotStyle,
   title: graphTitle,
+  model_type: modelType,
 });

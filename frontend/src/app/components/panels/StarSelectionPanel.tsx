@@ -55,7 +55,7 @@ export function StarSelectionPanel({
         <input
           value={fitsPreviewPath}
           onChange={(e) => setFitsPreviewPath(e.target.value)}
-          placeholder="Select FITS file..."
+          placeholder="Preview FITS file path"
           className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
       </label>
@@ -93,7 +93,7 @@ export function StarSelectionPanel({
 
       <div className="grid grid-cols-2 gap-3">
         <label>
-          <span className="text-sm font-medium">x_star</span>
+          <span className="text-sm font-medium">Reference Star X</span>
           <input
             value={xStar}
             onChange={(e) => setXStar(e.target.value)}
@@ -102,7 +102,7 @@ export function StarSelectionPanel({
         </label>
 
         <label>
-          <span className="text-sm font-medium">y_star</span>
+          <span className="text-sm font-medium">Reference Star Y</span>
           <input
             value={yStar}
             onChange={(e) => setYStar(e.target.value)}
@@ -212,7 +212,7 @@ export function StarSelectionPanel({
       </label>
 
       <p className="text-xs text-slate-500">
-        The first position corresponds to the target star, while the remaining positions correspond to comparison stars.
+        The first position is the target star. All remaining positions are comparison stars.
       </p>
     </div>
   );

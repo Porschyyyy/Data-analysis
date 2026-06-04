@@ -19,6 +19,11 @@ export function CalibrationPanel({
   setFrameRoleMap,
   runCalibrationOnly,
 }: CalibrationPanelProps) {
+
+  const isCalibrationReady =
+    detectedGroups.length > 0 &&
+    detectedGroups.every((group) => frameRoleMap[group.group_name]);
+    
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-bold">Calibration</h3>
@@ -54,7 +59,7 @@ export function CalibrationPanel({
                 className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               >
                 <option value="" disabled>
-                  Select group...
+                  Select frame type...
                 </option>
 
                 {group.group_name.toLowerCase().includes("bias") && (
@@ -82,10 +87,21 @@ export function CalibrationPanel({
       <button
         type="button"
         onClick={runCalibrationOnly}
-        className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+        disabled={!isCalibrationReady}
+        className={`w-full rounded-lg px-3 py-2 text-sm font-semibold text-white ${
+          isCalibrationReady
+            ? "bg-slate-900 hover:bg-slate-700"
+            : "cursor-not-allowed bg-slate-400"
+        }`}
       >
         Run Calibration
       </button>
+
+      {!isCalibrationReady && (
+        <p className="text-xs text-slate-500">
+          Assign all detected frame groups before running calibration.
+        </p>
+      )}
     </div>
   );
 }

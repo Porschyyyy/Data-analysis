@@ -8,8 +8,7 @@ import matplotlib.pyplot as plt
 from photutils.aperture import (
     CircularAperture,
     CircularAnnulus,
-    aperture_photometry,
-)
+    aperture_photometry)
 
 
 def get_fits_files(input_path):
@@ -18,8 +17,7 @@ def get_fits_files(input_path):
     return sorted(
         list(input_path.rglob("*.fits")) +
         list(input_path.rglob("*.fit")) +
-        list(input_path.rglob("*.fts"))
-    )
+        list(input_path.rglob("*.fts")))
 
 
 def is_science_fits_file(file_path):
@@ -29,8 +27,7 @@ def is_science_fits_file(file_path):
         "bias",
         "dark",
         "flat",
-        "master",
-    ]
+        "master"]
 
     for key in bad_keywords:
         if key in name:
@@ -49,14 +46,9 @@ def filter_science_fits_files(fits_files):
         else:
             skipped_files.append(f)
 
-    print("\n========== SCIENCE FILE FILTER ==========")
-    print("Science files:", len(science_files))
-    print("Skipped calibration files:", len(skipped_files))
-
     if len(skipped_files) > 0:
-        print("Examples skipped:")
         for f in skipped_files[:10]:
-            print("-", Path(f).name)
+            pass
 
     return science_files
 
@@ -121,23 +113,19 @@ def find_centroid_in_box(data, x_guess, y_guess, box_size=25):
     if cutout.size == 0:
         return float(x_guess), float(y_guess)
 
-    # ลบ background
     background = np.nanmedian(cutout)
     signal = cutout - background
     signal[~np.isfinite(signal)] = 0
     signal[signal < 0] = 0
 
-    # ถ้าสัญญาณอ่อนมาก ให้ใช้ตำแหน่งเดิม
     if np.nansum(signal) <= 0:
         return float(x_guess), float(y_guess)
 
-    # หา pixel ที่สว่างสุดในกล่อง
     peak_y, peak_x = np.unravel_index(
         np.nanargmax(signal),
         signal.shape,
     )
 
-    # คำนวณ centroid เฉพาะบริเวณรอบ peak
     small_half = max(4, int(box_size // 6))
 
     py_min = max(peak_y - small_half, 0)
@@ -198,29 +186,23 @@ def estimate_fwhm_one_star(data, x, y, box_size=35):
         return np.nan
 
     background = np.nanmedian(cutout)
-
     signal = cutout - background
     signal[signal < 0] = 0
-
     total = np.nansum(signal)
 
     if not np.isfinite(total) or total <= 0:
         return np.nan
 
     yy, xx = np.indices(signal.shape)
-
     x_cent = np.nansum(xx * signal) / total
     y_cent = np.nansum(yy * signal) / total
-
     r2 = (xx - x_cent) ** 2 + (yy - y_cent) ** 2
-
     sigma2 = np.nansum(r2 * signal) / total / 2.0
 
     if not np.isfinite(sigma2) or sigma2 <= 0:
         return np.nan
 
     sigma = np.sqrt(sigma2)
-
     fwhm = 2.355 * sigma
 
     return float(fwhm)
@@ -230,8 +212,7 @@ def estimate_fwhm_from_image(data, positions, centroid_box_size=25):
     measured_positions = recenter_positions(
         data=data,
         positions=positions,
-        centroid_box_size=centroid_box_size,
-    )
+        centroid_box_size=centroid_box_size)
 
     fwhm_values = []
 
@@ -240,10 +221,8 @@ def estimate_fwhm_from_image(data, positions, centroid_box_size=25):
             data=data,
             x=x,
             y=y,
-            box_size=35,
-        )
+            box_size=35)
 
-        # กรองค่าที่เพี้ยนเกินไป
         if np.isfinite(fwhm) and 1.0 <= fwhm <= 30.0:
             fwhm_values.append(fwhm)
 
@@ -260,11 +239,7 @@ def auto_photometry_params_from_files(
 ):
 
     fwhm_list = []
-
     sample_files = fits_files[:sample_size]
-
-    print("\n========== AUTO PHOTOMETRY PARAMS ==========")
-    print("Estimating FWHM from", len(sample_files), "files")
 
     for input_file in sample_files:
         try:
@@ -274,20 +249,17 @@ def auto_photometry_params_from_files(
             fwhm = estimate_fwhm_from_image(
                 data=data,
                 positions=positions,
-                centroid_box_size=25,
-            )
+                centroid_box_size=25)
 
             if np.isfinite(fwhm):
                 fwhm_list.append(fwhm)
-                print(input_file.name, "FWHM =", round(fwhm, 2))
             else:
-                print(input_file.name, "FWHM = nan")
+                pass
 
             del data
 
         except Exception as e:
-            print("Estimate FWHM failed:", input_file.name)
-            print("Reason:", e)
+            continue
 
     if len(fwhm_list) == 0:
         print("Cannot estimate FWHM. Use default values.")
@@ -297,29 +269,20 @@ def auto_photometry_params_from_files(
             "aperture_radius": 10,
             "annulus_inner": 20,
             "annulus_outer": 35,
-            "centroid_box_size": 25,
-        }
+            "centroid_box_size": 25}
 
     median_fwhm = float(np.nanmedian(fwhm_list))
-
     aperture_radius = max(5, int(round(1.8 * median_fwhm)))
     annulus_inner = max(aperture_radius + 5, int(round(3.0 * median_fwhm)))
     annulus_outer = max(annulus_inner + 8, int(round(5.0 * median_fwhm)))
     centroid_box_size = max(15, make_odd(6.0 * median_fwhm))
-
-    print("\nMedian FWHM =", round(median_fwhm, 2))
-    print("Auto aperture_radius =", aperture_radius)
-    print("Auto annulus_inner =", annulus_inner)
-    print("Auto annulus_outer =", annulus_outer)
-    print("Auto centroid_box_size =", centroid_box_size)
 
     return {
         "fwhm": median_fwhm,
         "aperture_radius": aperture_radius,
         "annulus_inner": annulus_inner,
         "annulus_outer": annulus_outer,
-        "centroid_box_size": centroid_box_size,
-    }
+        "centroid_box_size": centroid_box_size}
 
 
 def flux_to_inst_mag(flux):
@@ -355,21 +318,18 @@ def measure_aperture_photometry_one_file(
 
     apertures = CircularAperture(
         measured_positions,
-        r=aperture_radius,
-    )
+        r=aperture_radius)
 
     annuli = CircularAnnulus(
         measured_positions,
         r_in=annulus_inner,
-        r_out=annulus_outer,
-    )
+        r_out=annulus_outer)
 
     aperture_table = aperture_photometry(data, apertures)
 
     aperture_sums = np.array(
         aperture_table["aperture_sum"],
-        dtype=np.float64,
-    )
+        dtype=np.float64)
 
     annulus_masks = annuli.to_mask(method="center")
 
@@ -387,11 +347,8 @@ def measure_aperture_photometry_one_file(
             background_medians.append(np.nanmedian(annulus_values))
 
     background_medians = np.array(background_medians, dtype=np.float64)
-
     aperture_area = apertures.area
-
     net_fluxes = aperture_sums - background_medians * aperture_area
-
     time_value, time_type = get_time_from_header(header)
 
     row = {
@@ -404,17 +361,14 @@ def measure_aperture_photometry_one_file(
         "annulus_inner": annulus_inner,
         "annulus_outer": annulus_outer,
         "centroid_box_size": centroid_box_size,
-        "recenter": recenter,
-    }
+        "recenter": recenter}
 
-    # target = star 0
     row["target_flux"] = net_fluxes[0]
     row["target_inst_mag"] = flux_to_inst_mag(net_fluxes[0])
     row["target_bkg_median"] = background_medians[0]
     row["target_x"] = measured_positions[0][0]
     row["target_y"] = measured_positions[0][1]
 
-    # comparison stars = star 1 เป็นต้นไป
     comp_fluxes = []
 
     for i in range(1, len(measured_positions)):
@@ -429,10 +383,7 @@ def measure_aperture_photometry_one_file(
         comp_fluxes.append(net_fluxes[i])
 
     comp_fluxes = np.array(comp_fluxes, dtype=np.float64)
-
-    # ใช้เฉพาะ comparison star ที่ flux เป็นบวกและไม่ใช่ nan
     good_comp = np.isfinite(comp_fluxes) & (comp_fluxes > 0)
-
     comp_sum = np.nansum(comp_fluxes[good_comp])
 
     row["comparison_flux_sum"] = comp_sum
@@ -461,84 +412,6 @@ def measure_aperture_photometry_one_file(
     del data
 
     return row
-
-
-def plot_photometry_debug(df, output_csv):
-    output_csv = Path(output_csv)
-    debug_dir = output_csv.parent / "debug"
-    debug_dir.mkdir(parents=True, exist_ok=True)
-
-    if len(df) == 0:
-        return
-
-    x = np.arange(len(df))
-
-    # 1) target vs comparison flux
-    plt.figure(figsize=(10, 5))
-
-    if "target_flux" in df.columns:
-        target = pd.to_numeric(df["target_flux"], errors="coerce")
-        target_norm = target / np.nanmedian(target)
-        plt.plot(x, target_norm, label="target_flux / median")
-
-    if "comparison_flux_sum" in df.columns:
-        comp = pd.to_numeric(df["comparison_flux_sum"], errors="coerce")
-        comp_norm = comp / np.nanmedian(comp)
-        plt.plot(x, comp_norm, label="comparison_flux_sum / median")
-
-    if "weighted_comparison_flux_sum" in df.columns:
-        wcomp = pd.to_numeric(df["weighted_comparison_flux_sum"], errors="coerce")
-        wcomp_norm = wcomp / np.nanmedian(wcomp)
-        plt.plot(x, wcomp_norm, label="weighted_comparison_flux_sum / median")
-
-    plt.xlabel("Frame index")
-    plt.ylabel("Normalized flux")
-    plt.title("Debug: Target vs Comparison Flux")
-    plt.legend()
-    plt.grid(True, alpha=0.25)
-    plt.tight_layout()
-    plt.savefig(debug_dir / "debug_target_vs_comparison.png", dpi=200)
-    plt.close()
-
-    # 2) each comparison star
-    comp_cols = [
-        col for col in df.columns
-        if col.startswith("comp") and col.endswith("_flux")
-    ]
-
-    if len(comp_cols) > 0:
-        plt.figure(figsize=(10, 5))
-
-        for col in comp_cols:
-            values = pd.to_numeric(df[col], errors="coerce")
-            med = np.nanmedian(values)
-
-            if np.isfinite(med) and med != 0:
-                plt.plot(x, values / med, label=f"{col} / median")
-
-        plt.xlabel("Frame index")
-        plt.ylabel("Normalized flux")
-        plt.title("Debug: Each Comparison Star")
-        plt.legend()
-        plt.grid(True, alpha=0.25)
-        plt.tight_layout()
-        plt.savefig(debug_dir / "debug_each_comparison_star.png", dpi=200)
-        plt.close()
-
-    # 3) relative flux
-    if "relative_flux" in df.columns:
-        plt.figure(figsize=(10, 5))
-        rel = pd.to_numeric(df["relative_flux"], errors="coerce")
-        plt.plot(x, rel, marker="o", linestyle="none", markersize=3)
-        plt.xlabel("Frame index")
-        plt.ylabel("Relative flux")
-        plt.title("Debug: Relative Flux")
-        plt.grid(True, alpha=0.25)
-        plt.tight_layout()
-        plt.savefig(debug_dir / "debug_relative_flux.png", dpi=200)
-        plt.close()
-
-    print("Saved photometry debug plots:", debug_dir)
 
 
 def compute_flux_rms_ppm(flux):
@@ -571,16 +444,12 @@ def optimize_aperture_radius(
             max(5, round(1.5 * base)),
             max(6, round(1.8 * base)),
             max(7, round(2.1 * base)),
-            max(8, round(2.5 * base)),
-        ]
+            max(8, round(2.5 * base))]
 
     candidate_radii = sorted(set(int(r) for r in candidate_radii))
-
     sample_files = fits_files[:min(30, len(fits_files))]
 
     results = []
-
-    print("\n========== APERTURE OPTIMIZATION ==========")
 
     for aperture_radius in candidate_radii:
         annulus_inner = max(aperture_radius + 5, int(round(aperture_radius * 1.8)))
@@ -598,8 +467,7 @@ def optimize_aperture_radius(
                     annulus_outer=annulus_outer,
                     centroid_box_size=centroid_box_size,
                     recenter=recenter,
-                    estimated_fwhm=estimated_fwhm,
-                )
+                    estimated_fwhm=estimated_fwhm)
 
                 relative_fluxes.append(row["relative_flux"])
 
@@ -612,14 +480,12 @@ def optimize_aperture_radius(
             "aperture_radius": aperture_radius,
             "annulus_inner": annulus_inner,
             "annulus_outer": annulus_outer,
-            "rms_ppm": rms_ppm,
-        })
+            "rms_ppm": rms_ppm})
 
         print(
             f"r={aperture_radius}, "
             f"annulus={annulus_inner}-{annulus_outer}, "
-            f"RMS={rms_ppm:.0f} ppm"
-        )
+            f"RMS={rms_ppm:.0f} ppm")
 
     valid = [r for r in results if np.isfinite(r["rms_ppm"])]
 
@@ -629,17 +495,13 @@ def optimize_aperture_radius(
 
     best = min(valid, key=lambda item: item["rms_ppm"])
 
-    print("\nBest aperture:")
-    print(best)
-
     return best
 
 
 def compute_comparison_weights(df):
     comp_cols = [
         col for col in df.columns
-        if col.startswith("comp") and col.endswith("_flux")
-    ]
+        if col.startswith("comp") and col.endswith("_flux")]
 
     weights = {}
 
@@ -670,15 +532,13 @@ def compute_comparison_weights(df):
 
     return {
         col: weight / total_weight
-        for col, weight in weights.items()
-    }
+        for col, weight in weights.items()}
 
 
 def apply_weighted_comparison(df):
     comp_cols = [
         col for col in df.columns
-        if col.startswith("comp") and col.endswith("_flux")
-    ]
+        if col.startswith("comp") and col.endswith("_flux")]
 
     if len(comp_cols) == 0:
         df["weighted_comparison_flux_sum"] = np.nan
@@ -686,7 +546,6 @@ def apply_weighted_comparison(df):
         return df, {}
 
     weights = compute_comparison_weights(df)
-
     weighted_sum = np.zeros(len(df), dtype=float)
 
     for col in comp_cols:
@@ -698,71 +557,18 @@ def apply_weighted_comparison(df):
         df[col.replace("_flux", "_weight")] = weight
 
     df["weighted_comparison_flux_sum"] = weighted_sum
-
     target_flux = pd.to_numeric(df["target_flux"], errors="coerce").to_numpy(dtype=float)
 
     good = (
         np.isfinite(target_flux)
         & np.isfinite(weighted_sum)
         & (target_flux > 0)
-        & (weighted_sum > 0)
-    )
+        & (weighted_sum > 0))
 
     df["weighted_relative_flux"] = np.nan
     df.loc[good, "weighted_relative_flux"] = target_flux[good] / weighted_sum[good]
 
     return df, weights
-
-
-def save_photometry_quality_summary(df, output_csv):
-    output_csv = Path(output_csv)
-    summary_csv = output_csv.parent / "photometry_quality_summary.csv"
-
-    summary = {}
-
-    summary["n_frames"] = len(df)
-
-    if "normalized_flux" in df.columns:
-        flux = pd.to_numeric(df["normalized_flux"], errors="coerce")
-        flux = flux[np.isfinite(flux)]
-
-        summary["normalized_flux_median"] = float(np.nanmedian(flux))
-        summary["normalized_flux_std"] = float(np.nanstd(flux))
-        summary["rms_ppm"] = float(np.nanstd(flux - 1.0) * 1e6)
-
-        summary["flux_min"] = float(np.nanmin(flux))
-        summary["flux_max"] = float(np.nanmax(flux))
-
-    if "relative_flux" in df.columns:
-        rel = pd.to_numeric(df["relative_flux"], errors="coerce")
-        rel = rel[np.isfinite(rel)]
-
-        summary["relative_flux_median"] = float(np.nanmedian(rel))
-        summary["relative_flux_std"] = float(np.nanstd(rel))
-
-    if "estimated_fwhm" in df.columns:
-        fwhm = pd.to_numeric(df["estimated_fwhm"], errors="coerce")
-        fwhm = fwhm[np.isfinite(fwhm)]
-
-        if len(fwhm) > 0:
-            summary["estimated_fwhm_median"] = float(np.nanmedian(fwhm))
-
-    if "aperture_radius" in df.columns:
-        summary["aperture_radius"] = float(pd.to_numeric(df["aperture_radius"]).median())
-
-    if "annulus_inner" in df.columns:
-        summary["annulus_inner"] = float(pd.to_numeric(df["annulus_inner"]).median())
-
-    if "annulus_outer" in df.columns:
-        summary["annulus_outer"] = float(pd.to_numeric(df["annulus_outer"]).median())
-
-    summary_df = pd.DataFrame([summary])
-    summary_df.to_csv(summary_csv, index=False)
-
-    print("\nSaved photometry quality summary:")
-    print(summary_csv)
-
-    return summary_df
 
 
 def run_aperture_photometry(
@@ -800,8 +606,7 @@ def run_aperture_photometry(
         params = auto_photometry_params_from_files(
             fits_files=fits_files,
             positions=positions,
-            sample_size=10,
-        )
+            sample_size=10)
 
         estimated_fwhm = params["fwhm"]
         aperture_radius = params["aperture_radius"]
@@ -814,8 +619,7 @@ def run_aperture_photometry(
             positions=positions,
             estimated_fwhm=estimated_fwhm,
             centroid_box_size=centroid_box_size,
-            recenter=recenter,
-        )
+            recenter=recenter)
 
         if best_aperture is not None:
             aperture_radius = best_aperture["aperture_radius"]
@@ -850,8 +654,7 @@ def run_aperture_photometry(
                 annulus_outer=annulus_outer,
                 centroid_box_size=centroid_box_size,
                 recenter=recenter,
-                estimated_fwhm=estimated_fwhm,
-            )
+                estimated_fwhm=estimated_fwhm)
 
             rows.append(row)
 
@@ -863,8 +666,7 @@ def run_aperture_photometry(
             progress_callback(
             i,
             len(fits_files),
-            f"Photometry {Path(input_file).name}",
-        )
+            f"Photometry {Path(input_file).name}")
 
     df = pd.DataFrame(rows)
 
@@ -872,24 +674,16 @@ def run_aperture_photometry(
         print("No photometry results")
         return df
 
-    # เรียงตามเวลา
     if "time" in df.columns:
         df = df.sort_values("time").reset_index(drop=True)
 
-    # แปลง relative_flux ให้เป็นตัวเลข
     df["relative_flux"] = pd.to_numeric(df["relative_flux"], errors="coerce")
-
-    # ตัดค่าที่ผิดปกติแบบพื้นฐาน
     df.loc[df["relative_flux"] <= 0, "relative_flux"] = np.nan
-
-    # ใช้ weighted comparison stars
     df, comparison_weights = apply_weighted_comparison(df)
 
-    print("\n========== COMPARISON STAR WEIGHTS ==========")
     for name, weight in comparison_weights.items():
-        print(f"{name}: {weight:.4f}")
+        pass
 
-    # ใช้ weighted_relative_flux เป็นค่า default ถ้ามี
     if "weighted_relative_flux" in df.columns:
         df["relative_flux"] = df["weighted_relative_flux"]
 
@@ -904,18 +698,14 @@ def run_aperture_photometry(
 
     comparison_norm = (
         df[comparison_reference_col]
-        / np.nanmedian(df[comparison_reference_col])
-    )
+        / np.nanmedian(df[comparison_reference_col]))
 
     good_mask = comparison_norm > 0.90
-
     removed_frames = np.sum(~good_mask)
 
     print(f"\n🗑 Removed bad frames: {removed_frames}")
 
     df = df[good_mask].reset_index(drop=True)
-
-    # normalize relative flux ด้วย median
     median_rel_flux = np.nanmedian(df["relative_flux"])
 
     if np.isfinite(median_rel_flux) and median_rel_flux != 0:
@@ -924,9 +714,6 @@ def run_aperture_photometry(
         df["normalized_flux"] = np.nan
 
     df.to_csv(output_csv, index=False)
-
-    plot_photometry_debug(df, output_csv)
-    save_photometry_quality_summary(df, output_csv)
 
     print("\nSaved photometry table:")
     print(output_csv)

@@ -15,9 +15,7 @@ def overscan_correct(data, overscan_slice=None):
         return data
 
     overscan_region = data[overscan_slice]
-
     overscan_level = np.nanmedian(overscan_region)
-
     corrected = data - overscan_level
 
     return corrected
@@ -26,15 +24,13 @@ def overscan_correct(data, overscan_slice=None):
 def trim_image(data, trim_slice=None):
     if trim_slice is None:
         return data
-
+    
     return data[trim_slice]
 
 
 def preprocess_image(file_path, overscan_slice=None, trim_slice=None):
     data = read_fits_data(file_path)
-
     data = overscan_correct(data, overscan_slice=overscan_slice)
-
     data = trim_image(data, trim_slice=trim_slice)
 
     return data.astype(np.float32)
@@ -47,13 +43,11 @@ def combine_median(files, overscan_slice=None, trim_slice=None):
         data = preprocess_image(
             file_path,
             overscan_slice=overscan_slice,
-            trim_slice=trim_slice
-        )
+            trim_slice=trim_slice)
 
         stack.append(data)
 
     stack = np.asarray(stack, dtype=np.float32)
-
     master = np.nanmedian(stack, axis=0).astype(np.float32)
 
     del stack
@@ -68,8 +62,7 @@ def combine_mean_streaming(files, overscan_slice=None, trim_slice=None):
         data = preprocess_image(
             file_path,
             overscan_slice=overscan_slice,
-            trim_slice=trim_slice
-        )
+            trim_slice=trim_slice)
 
         if sum_image is None:
             sum_image = np.zeros_like(data, dtype=np.float32)
@@ -105,8 +98,9 @@ def save_fits_image(data, output_file, header=None):
     hdu.writeto(output_file, overwrite=True)
 
     print("Saved:", output_file)
+    
 
-
+# Create master bias from bias frames
 def create_master_bias(
     bias_files,
     output_file,
@@ -117,9 +111,6 @@ def create_master_bias(
     progress_callback=None):
 
     output_file = Path(output_file)
-
-    print("\nCreating master bias")
-    print("Number of bias files:", len(bias_files))
 
     if skip_existing and output_file.exists():
         print("Skip existing master bias:", output_file)
@@ -138,15 +129,13 @@ def create_master_bias(
         data = preprocess_image(
             file_path,
             overscan_slice=overscan_slice,
-            trim_slice=trim_slice,
-        )
+            trim_slice=trim_slice)
 
         if progress_callback is not None:
             progress_callback(
                 i,
                 len(bias_files),
-                f"Creating master bias {i}/{len(bias_files)}: {Path(file_path).name}",
-            )
+                f"Creating master bias {i}/{len(bias_files)}: {Path(file_path).name}")
 
         if combine_method == "median":
             stack.append(data.astype(np.float32))
@@ -181,6 +170,7 @@ def create_master_bias(
     return master_bias
 
 
+# Create master dark after bias subtraction
 def create_master_dark(
     dark_files,
     output_file,
@@ -192,9 +182,6 @@ def create_master_dark(
     progress_callback=None):
 
     output_file = Path(output_file)
-
-    print("\nCreating master dark")
-    print("Number of dark files:", len(dark_files))
 
     if skip_existing and output_file.exists():
         print("Skip existing master dark:", output_file)
@@ -211,8 +198,7 @@ def create_master_dark(
             data = preprocess_image(
                 file_path,
                 overscan_slice=overscan_slice,
-                trim_slice=trim_slice
-            )
+                trim_slice=trim_slice)
 
             if master_bias is not None:
                 data = data - master_bias
@@ -221,13 +207,11 @@ def create_master_dark(
                 progress_callback(
                     i,
                     len(dark_files),
-                    f"Creating master dark {i}/{len(dark_files)}: {Path(file_path).name}",
-                )
+                    f"Creating master dark {i}/{len(dark_files)}: {Path(file_path).name}")
 
             calibrated_stack.append(data.astype(np.float32))
 
         calibrated_stack = np.asarray(calibrated_stack, dtype=np.float32)
-
         master_dark = np.nanmedian(calibrated_stack, axis=0).astype(np.float32)
 
         del calibrated_stack
@@ -240,8 +224,7 @@ def create_master_dark(
             data = preprocess_image(
                 file_path,
                 overscan_slice=overscan_slice,
-                trim_slice=trim_slice
-            )
+                trim_slice=trim_slice)
 
             if master_bias is not None:
                 data = data - master_bias
@@ -250,8 +233,7 @@ def create_master_dark(
                 progress_callback(
                     i,
                     len(dark_files),
-                    f"Creating master dark {i}/{len(dark_files)}: {Path(file_path).name}",
-                )
+                    f"Creating master dark {i}/{len(dark_files)}: {Path(file_path).name}")
 
             if sum_image is None:
                 sum_image = np.zeros_like(data, dtype=np.float32)
@@ -275,6 +257,7 @@ def create_master_dark(
     return master_dark
 
 
+# Create normalized master flat
 def create_master_flat(
     flat_files,
     output_file,
@@ -287,9 +270,6 @@ def create_master_flat(
     progress_callback=None):
 
     output_file = Path(output_file)
-
-    print("\nCreating master flat")
-    print("Number of flat files:", len(flat_files))
 
     if skip_existing and output_file.exists():
         print("Skip existing master flat:", output_file)
@@ -306,8 +286,7 @@ def create_master_flat(
             data = preprocess_image(
                 file_path,
                 overscan_slice=overscan_slice,
-                trim_slice=trim_slice
-            )
+                trim_slice=trim_slice)
 
             if master_bias is not None:
                 data = data - master_bias
@@ -324,13 +303,11 @@ def create_master_flat(
                 progress_callback(
                     i,
                     len(flat_files),
-                    f"Creating master flat {i}/{len(flat_files)}: {Path(file_path).name}",
-                )
+                    f"Creating master flat {i}/{len(flat_files)}: {Path(file_path).name}")
 
             calibrated_stack.append(data.astype(np.float32))
 
         calibrated_stack = np.asarray(calibrated_stack, dtype=np.float32)
-
         master_flat = np.nanmedian(calibrated_stack, axis=0).astype(np.float32)
 
         del calibrated_stack
@@ -343,8 +320,7 @@ def create_master_flat(
             data = preprocess_image(
                 file_path,
                 overscan_slice=overscan_slice,
-                trim_slice=trim_slice
-            )
+                trim_slice=trim_slice)
 
             if master_bias is not None:
                 data = data - master_bias
@@ -361,8 +337,7 @@ def create_master_flat(
                 progress_callback(
                     i,
                     len(flat_files),
-                    f"Creating master flat {i}/{len(flat_files)}: {Path(file_path).name}",
-                )
+                    f"Creating master flat {i}/{len(flat_files)}: {Path(file_path).name}")
 
             if sum_image is None:
                 sum_image = np.zeros_like(data, dtype=np.float32)
@@ -402,6 +377,7 @@ def load_master(master_file):
     return data
 
 
+# Calibrate science frames using master bias, dark, and flat
 def calibrate_light_frame(
     light_file,
     output_file,
@@ -419,8 +395,7 @@ def calibrate_light_frame(
     data = preprocess_image(
         light_file,
         overscan_slice=overscan_slice,
-        trim_slice=trim_slice
-    )
+        trim_slice=trim_slice)
 
     hdr = fits.getheader(light_file)
 
@@ -455,10 +430,7 @@ def calibrate_light_frame(
         output_file,
         data,
         header=hdr,
-        overwrite=True
-    )
-
-    print("Saved calibrated:", output_file)
+        overwrite=True)
 
     del data
     del master_bias
@@ -490,8 +462,6 @@ def calibrate_light_files(
             print(f"[CALIBRATE {i}/{len(light_files)}] Skip existing: {output_file.name}")
             continue
 
-        print(f"[CALIBRATE {i}/{len(light_files)}] Calibrating: {light_file.name}")
-
         calibrate_light_frame(
             light_file=light_file,
             output_file=output_file,
@@ -499,8 +469,7 @@ def calibrate_light_files(
             master_dark_file=master_dark_file,
             master_flat_file=master_flat_file,
             overscan_slice=overscan_slice,
-            trim_slice=trim_slice
-        )
+            trim_slice=trim_slice)
 
         if progress_callback is not None:
             current = progress_start + i
@@ -508,5 +477,4 @@ def calibrate_light_files(
             progress_callback(
                 current,
                 total,
-                f"Calibrating {Path(light_file).name}",
-        )
+                f"Calibrating {Path(light_file).name}")

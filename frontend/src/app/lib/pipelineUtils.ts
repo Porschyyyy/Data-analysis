@@ -10,7 +10,7 @@ export function createLogger(setLogs: React.Dispatch<React.SetStateAction<string
 
 export function requireRawPath(rawPath: string, addLog: AddLog, setActiveTab: (tab: TabKey) => void) {
   if (!rawPath.trim()) {
-    addLog("ERROR: Please select raw folder first.");
+    addLog("ERROR: Please upload a FITS folder first.");
     setActiveTab("import");
     return false;
   }
@@ -19,7 +19,7 @@ export function requireRawPath(rawPath: string, addLog: AddLog, setActiveTab: (t
 
 export function requireOutputPath(outputPath: string, addLog: AddLog, setActiveTab: (tab: TabKey) => void) {
   if (!outputPath.trim()) {
-    addLog("ERROR: Please select output folder first.");
+    addLog("ERROR: Output folder is not ready. Please upload a FITS folder first.");
     setActiveTab("import");
     return false;
   }

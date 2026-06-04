@@ -1,4 +1,4 @@
-import type { MenuButton, PipelineStep, TabItem, ToolbarButton } from "../types/pipeline";
+import type { PipelineStep, TabItem, ToolbarButton } from "../types/pipeline";
 import type { ToolKey } from "../types/pipeline";
 import {
   Aperture,
@@ -32,17 +32,6 @@ export const tabs: TabItem[] = [
   { key: "stars", label: "Star Selection" },
   { key: "photometry", label: "Photometry" },
   { key: "lightcurve", label: "Light Curve" },
-];
-
-export const topMenuButtons: MenuButton[] = [
-  { key: "file", label: "File" },
-  { key: "edit", label: "Edit" },
-  { key: "image", label: "Image" },
-  { key: "process", label: "Process" },
-  { key: "analyze", label: "Analyze" },
-  { key: "plugins", label: "Plugins" },
-  { key: "window", label: "Window" },
-  { key: "help", label: "Help" },
 ];
 
 export const toolbarButtons: ToolbarButton[] = [

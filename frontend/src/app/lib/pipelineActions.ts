@@ -1,6 +1,6 @@
 import type * as React from "react";
 import { pipelineSteps } from "./constants";
-import { callApi, chooseFolderRequest, readHeadersRequest } from "./pipelineApi";
+import { callApi } from "./pipelineApi";
 import {
   alignmentPayload,
   calibrationPayload,
@@ -30,6 +30,7 @@ type BaseActionContext = {
   graphTitle: string;
   usePreset: boolean;
   useCommonMinSize: boolean;
+  modelType: "data_only" | "transit";
   addLog: AddLog;
   setActiveTab: (tab: TabKey) => void;
   setActiveStep: (step: string) => void;
@@ -46,36 +47,6 @@ type BaseActionContext = {
   setFrameRoleMap: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 };
 
-export async function chooseFolder(
-  target: "raw" | "output",
-  ctx: Pick<BaseActionContext, "rawPath" | "outputPath" | "addLog" | "setImagePath"> & {
-    setRawPath: (path: string) => void;
-    setOutputPath: (path: string) => void;
-    setFitsPreviewPath: (path: string) => void;
-  }
-) {
-  try {
-    const currentPath = target === "raw" ? ctx.rawPath : ctx.outputPath;
-    const data = await chooseFolderRequest(target, currentPath, ctx.addLog);
-
-    if (!data.path) {
-      ctx.addLog("Folder selection cancelled.");
-      return;
-    }
-
-    if (target === "raw") {
-      ctx.setRawPath(data.path);
-      ctx.addLog(`Raw folder selected: ${data.path}`);
-    } else {
-      ctx.setOutputPath(data.path);
-      ctx.setImagePath(`${data.path}/photometry/lightcurve_academic.png`);
-      ctx.setFitsPreviewPath("");
-      ctx.addLog(`Output folder selected: ${data.path}`);
-    }
-  } catch (err) {
-    ctx.addLog(err instanceof Error ? `ERROR: ${err.message}` : "ERROR: Unknown folder selection error");
-  }
-}
 
 export async function plotOnly(ctx: BaseActionContext, writeDoneLog = true) {
   if (!requireOutputPath(ctx.outputPath, ctx.addLog, ctx.setActiveTab)) return;
@@ -92,6 +63,7 @@ export async function plotOnly(ctx: BaseActionContext, writeDoneLog = true) {
         plotStyle: ctx.plotStyle,
         graphTitle: ctx.graphTitle,
         usePreset: ctx.usePreset,
+        modelType: ctx.modelType,
       }),
       ctx.addLog
     );
@@ -180,7 +152,7 @@ export async function runHeadersOnly(ctx: BaseActionContext) {
     );
 
     ctx.setDetectedGroups(data.detected_groups ?? []);
-  ctx.addLog(`Detected groups: ${data.detected_groups?.length ?? 0}`);
+    ctx.addLog(`Detected groups: ${data.detected_groups?.length ?? 0}`);
 
     if (data.first_preview_file) {
       ctx.setFitsPreviewPath(data.first_preview_file);

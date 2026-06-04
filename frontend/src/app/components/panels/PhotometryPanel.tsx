@@ -9,6 +9,16 @@ export function PhotometryPanel({
   setPositionsText,
   runPhotometryOnly,
 }: PhotometryPanelProps) {
+
+  const hasPositions = (() => {
+    try {
+      const positions = JSON.parse(positionsText);
+      return Array.isArray(positions) && positions.length > 1;
+    } catch {
+      return false;
+    }
+  })();
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-bold">Photometry</h3>
@@ -73,13 +83,18 @@ export function PhotometryPanel({
       </label>
 
       <p className="text-xs text-slate-500">
-        The first position corresponds to the target star, while the remaining positions correspond to comparison stars.
+        The first position is the target star. All remaining positions are comparison stars.
       </p>
 
       <button
         type="button"
         onClick={runPhotometryOnly}
-        className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+        disabled={!hasPositions}
+        className={`w-full rounded-lg px-3 py-2 text-sm font-semibold text-white ${
+          hasPositions
+            ? "bg-slate-900 hover:bg-slate-700"
+            : "cursor-not-allowed bg-slate-400"
+        }`}
       >
         Run Photometry
       </button>

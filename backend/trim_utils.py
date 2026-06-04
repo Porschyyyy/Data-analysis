@@ -10,8 +10,7 @@ def get_fits_files(input_path):
     return sorted(
         list(input_path.rglob("*.fits")) +
         list(input_path.rglob("*.fit")) +
-        list(input_path.rglob("*.fts"))
-    )
+        list(input_path.rglob("*.fts")))
 
 
 def summarize_image_shapes(files):
@@ -25,27 +24,15 @@ def summarize_image_shapes(files):
             "filename": Path(f).name,
             "folder": Path(f).parent.name,
             "NAXIS1": hdr.get("NAXIS1"),
-            "NAXIS2": hdr.get("NAXIS2"),
-        })
+            "NAXIS2": hdr.get("NAXIS2")})
 
     df_shape = pd.DataFrame(rows)
-
-    print("\n========== IMAGE SHAPES ==========")
-    print(df_shape[["folder", "NAXIS1", "NAXIS2"]].value_counts())
 
     min_width = int(df_shape["NAXIS1"].min())
     min_height = int(df_shape["NAXIS2"].min())
 
     max_width = int(df_shape["NAXIS1"].max())
     max_height = int(df_shape["NAXIS2"].max())
-
-    print("\nMinimum common size:")
-    print("width :", min_width)
-    print("height:", min_height)
-
-    print("\nMaximum size:")
-    print("width :", max_width)
-    print("height:", max_height)
 
     return df_shape, min_width, min_height, max_width, max_height
 
@@ -86,8 +73,6 @@ def trim_one_fits_file(
         print(f"Skip trimmed existing: {output_file.name}")
         return
 
-    print(f"Trimming: {input_file.name}")
-
     data, header = fits.getdata(input_file, header=True, memmap=True)
     data = np.asarray(data, dtype=np.float32)
 
@@ -105,8 +90,7 @@ def trim_one_fits_file(
         output_file,
         trimmed,
         header=header,
-        overwrite=True
-    )
+        overwrite=True)
 
     del data
     del trimmed
@@ -140,12 +124,11 @@ def run_center_trim(
             "target_width": None,
             "target_height": None,
             "use_common_min_size": use_common_min_size,
-            "message": "No FITS files found for trimming",
-        }
+            "message": "No FITS files found for trimming"}
 
     df_shape, min_width, min_height, max_width, max_height = summarize_image_shapes(fits_files)
 
-    first_data = fits.getdata(fits_files[0], memmap=True)
+    first_data = fits.getdata(fits_files[0], memmap=False)
     image_shape = first_data.shape
     del first_data
 
@@ -159,8 +142,7 @@ def run_center_trim(
     x0, x1, y0, y1 = compute_center_trim_box(
         image_shape=image_shape,
         target_width=target_width,
-        target_height=target_height
-    )
+        target_height=target_height)
 
     print("\nTrim box:")
     print("x0, x1 =", x0, x1)
@@ -171,8 +153,6 @@ def run_center_trim(
         relative_path = input_file.relative_to(input_path)
         output_file = output_path / relative_path
 
-        print(f"\n[TRIM {i}/{len(fits_files)}]")
-
         trim_one_fits_file(
             input_file=input_file,
             output_file=output_file,
@@ -180,17 +160,13 @@ def run_center_trim(
             x1=x1,
             y0=y0,
             y1=y1,
-            skip_existing=skip_existing
-        )
+            skip_existing=skip_existing)
 
         if progress_callback is not None:
             progress_callback(
                 i,
                 len(fits_files),
-                f"Running Trim : {Path(input_file).name}",
-            )
-
-    print("\nCenter trim finished")
+                f"Running Trim : {Path(input_file).name}")
 
     return {
         "n_files": len(fits_files),
@@ -207,5 +183,4 @@ def run_center_trim(
             "y0": int(y0),
             "y1": int(y1),
         },
-        "message": "Center trim finished",
-    }
+        "message": "Center trim finished"}

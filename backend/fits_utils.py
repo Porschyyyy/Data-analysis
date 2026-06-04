@@ -47,6 +47,7 @@ def clean_header_value(value):
     return str(value)
 
 
+# Read FITS headers and convert them into a metadata table
 def read_all_headers(fits_files):
     rows = []
 
@@ -57,8 +58,7 @@ def read_all_headers(fits_files):
             row = {
                 "file": str(f),
                 "filename": f.name,
-                "folder": f.parent.name,
-            }
+                "folder": f.parent.name}
 
             for key in hdr.keys():
                 if key in ["COMMENT", "HISTORY"]:
@@ -73,8 +73,7 @@ def read_all_headers(fits_files):
                 "file": str(f),
                 "filename": f.name,
                 "folder": f.parent.name,
-                "error": str(e),
-            })
+                "error": str(e)})
 
     return pd.DataFrame(rows)
 
@@ -95,28 +94,15 @@ def summarize_header_values(df):
             "HEADER": col,
             "NON_NULL_COUNT": len(values),
             "UNIQUE_COUNT": len(unique_values),
-            "EXAMPLE_VALUES": list(unique_values[:10]),
-        })
+            "EXAMPLE_VALUES": list(unique_values[:10])})
 
     summary_df = pd.DataFrame(summary)
 
     summary_df = summary_df.sort_values(
         by=["UNIQUE_COUNT", "NON_NULL_COUNT"],
-        ascending=[False, False],
-    )
+        ascending=[False, False])
 
     return summary_df
-
-
-def show_values(df, columns):
-    for col in columns:
-        if col in df.columns:
-            print(f"\n===== {col} =====")
-            print("จำนวนค่าที่แตกต่าง:", df[col].dropna().nunique())
-            print(df[col].dropna().value_counts())
-        else:
-            print(f"\nไม่พบ header: {col}")
-
 
 FRAME_GROUP_HEADER_CANDIDATES = [
     "IMAGETYP",
@@ -157,79 +143,6 @@ def add_raw_frame_group(df, frame_group_column=None):
     return df
 
 
-def print_detected_frame_groups(df, max_files=3):
-    print("\n========== DETECTED FRAME GROUPS ==========")
-
-    if "RAW_FRAME_GROUP" not in df.columns:
-        df = add_raw_frame_group(df)
-
-    for i, (group_name, group_df) in enumerate(
-        df.groupby("RAW_FRAME_GROUP", dropna=False),
-        start=1,
-    ):
-        print(f"\n[{i}] Group: {group_name}")
-        print("จำนวนไฟล์:", len(group_df))
-
-        print("\nตัวอย่างไฟล์:")
-        for filename in group_df["filename"].head(max_files):
-            print("-", filename)
-
-        print("\nHeader summary:")
-
-        for col in [
-            "IMAGETYP",
-            "OBJECT",
-            "EXPTIME",
-            "EXPOSURE",
-            "FILTER",
-            "CCD-TEMP",
-            "SET-TEMP",
-            "XBINNING",
-            "YBINNING",
-            "NAXIS1",
-            "NAXIS2",
-        ]:
-            if col in group_df.columns:
-                values = group_df[col].dropna().unique()
-
-                if len(values) > 0:
-                    shown_values = list(values[:10])
-                    print(f"{col}: {shown_values}")
-
-        print("-----------------------------------")
-
-
-def ask_frame_role_map(df):
-    role_map = {}
-
-    if "RAW_FRAME_GROUP" not in df.columns:
-        df = add_raw_frame_group(df)
-
-    group_names = list(df["RAW_FRAME_GROUP"].dropna().unique())
-
-    print("\n========== SET FRAME ROLES ==========")
-    print("เลือก role ให้แต่ละ group: bias / dark / flat / light / skip")
-
-    for group_name in group_names:
-        while True:
-            role = input(
-                f'\nGroup "{group_name}" ตั้งเป็นอะไร? '
-                "(bias/dark/flat/light/skip): "
-            ).strip().lower()
-
-            if role in ["bias", "dark", "flat", "light", "skip"]:
-                role_map[group_name] = role
-                break
-
-            print("กรุณาพิมพ์เฉพาะ bias, dark, flat, light หรือ skip")
-
-    print("\n========== ROLE MAP ==========")
-    for group_name, role in role_map.items():
-        print(f"{group_name} -> {role}")
-
-    return role_map
-
-
 def classify_frame_type_from_folder(folder_name):
     folder = str(folder_name).lower()
 
@@ -259,13 +172,13 @@ def get_first_existing_value(row, possible_keys):
     return np.nan
 
 
+# Add standardized metadata columns used throughout the pipeline
 def add_standard_columns(df, frame_role_map=None, frame_group_column=None):
     df = df.copy()
 
     df = add_raw_frame_group(
         df,
-        frame_group_column=frame_group_column,
-    )
+        frame_group_column=frame_group_column)
 
     if frame_role_map is None:
         df["FRAME_TYPE"] = "unassigned"
@@ -275,26 +188,22 @@ def add_standard_columns(df, frame_role_map=None, frame_group_column=None):
 
     df["EXPOSURE_STD"] = df.apply(
         lambda row: get_first_existing_value(row, ["EXPTIME", "EXPOSURE"]),
-        axis=1,
-    )
+        axis=1)
 
     df["FILTER_STD"] = df.apply(
         lambda row: get_first_existing_value(row, ["FILTER", "FILTER1"]),
-        axis=1,
-    )
+        axis=1)
 
     df["GAIN_STD"] = df.apply(
         lambda row: get_first_existing_value(row, ["GAIN", "EGAIN"]),
-        axis=1,
-    )
+        axis=1)
 
     df["TEMP_STD"] = df.apply(
         lambda row: get_first_existing_value(
             row,
             ["CCD-TEMP", "CCD_TEMP", "SET-TEMP", "TEMP"],
         ),
-        axis=1,
-    )
+        axis=1)
 
     df["EXPOSURE_STD"] = pd.to_numeric(
         df["EXPOSURE_STD"],
@@ -325,25 +234,6 @@ def add_standard_columns(df, frame_role_map=None, frame_group_column=None):
     return df
 
 
-def summarize_standard_values(df):
-    columns = [
-        "FRAME_TYPE",
-        "EXPOSURE_STD",
-        "FILTER_STD",
-        "GAIN_STD",
-        "TEMP_STD",
-        "BINNING_STD",
-        "IMAGE_SIZE",
-        "OBJECT",
-    ]
-
-    for col in columns:
-        if col in df.columns:
-            print(f"\n===== {col} =====")
-            print("จำนวนค่าที่แตกต่าง:", df[col].dropna().nunique())
-            print(df[col].dropna().value_counts())
-
-
 def choose_group_keys(df, candidate_keys):
     selected_keys = []
 
@@ -362,6 +252,7 @@ def choose_group_keys(df, candidate_keys):
     return selected_keys
 
 
+# Group calibration frames using relevant metadata keys
 def group_files_for_calibration(df, frame_type):
     sub_df = df[df["FRAME_TYPE"] == frame_type].copy()
 
@@ -382,6 +273,7 @@ def group_files_for_calibration(df, frame_type):
     return groups, group_keys
 
 
+# Generate calibration groups for bias, dark, flat, and light frames
 def make_all_groups(df):
     groups = {}
     used_keys = {}
@@ -393,19 +285,3 @@ def make_all_groups(df):
         used_keys[frame_type] = group_keys
 
     return groups, used_keys
-
-
-def print_groups(groups, used_keys):
-    for frame_type, group_dict in groups.items():
-        print(f"\n===== {frame_type.upper()} =====")
-        print("ใช้ keys:", used_keys[frame_type])
-        print("จำนวน groups:", len(group_dict))
-
-        if len(group_dict) == 0:
-            print("ไม่พบไฟล์")
-            continue
-
-        for group_value, files in group_dict.items():
-            print("\nGroup:", group_value)
-            print("จำนวนไฟล์:", len(files))
-            print("ตัวอย่าง:", files[:2])

@@ -2,6 +2,10 @@ from pathlib import Path
 from typing import Literal
 from fastapi.responses import FileResponse
 
+from fastapi import UploadFile, File
+import shutil
+import uuid
+
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,43 +17,30 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 from fastapi import Response
 
-import requests
-from urllib.parse import quote
-
 from fits_utils import (
     read_all_headers,
     summarize_header_values,
     add_standard_columns,
-    summarize_standard_values,
-    make_all_groups,
-)
+    make_all_groups)
 
 from calibration import (
     create_master_bias,
     create_master_dark,
     create_master_flat,
-    calibrate_light_files,
-)
+    calibrate_light_files)
 
 from trim_utils import run_center_trim, summarize_image_shapes
 from cosmic_ray import run_cosmic_ray_removal
 from alignment import run_centroid_alignment
 from photometry import run_aperture_photometry
-
-from plot_lightcurve import (
-    plot_lightcurve,
-    plot_lightcurve_both_styles,
-    plot_phase_folded_lightcurve,
-)
-
+from plot_lightcurve import plot_lightcurve
 from transit_model import fit_transit
 
 PIPELINE_PROGRESS = {
     "current": 0,
     "total": 0,
     "message": "Ready",
-    "running": False,
-}
+    "running": False}
 
 def set_progress(current=0, total=0, message="Ready", running=False, step="idle"):
     PIPELINE_PROGRESS.update({
@@ -57,22 +48,18 @@ def set_progress(current=0, total=0, message="Ready", running=False, step="idle"
         "total": int(total),
         "message": message,
         "running": running,
-        "step": step,
-    })
+        "step": step})
 
 app = FastAPI(
     title="WASP-12b Data Analysis API",
-    version="2.0.0",
-)
+    version="2.0.0")
 
-# เผื่อทำ UI ต่อภายหลัง
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
-)
+    allow_headers=["*"])
 
 
 # ==================================================
@@ -85,8 +72,8 @@ def get_fits_files(input_path: str | Path):
     return sorted(
         list(input_path.rglob("*.fits")) +
         list(input_path.rglob("*.fit")) +
-        list(input_path.rglob("*.fts"))
-    )
+        list(input_path.rglob("*.fts")))
+
 
 def is_light_preview_file(file_path: Path):
     text = f"{file_path.parent.name} {file_path.name}".lower()
@@ -101,6 +88,7 @@ def is_light_preview_file(file_path: Path):
 
     return True
 
+
 def safe_group_name(value):
     return (
         str(value)
@@ -108,8 +96,7 @@ def safe_group_name(value):
         .replace("(", "")
         .replace(")", "")
         .replace(",", "_")
-        .replace("'", "")
-    )
+        .replace("'", ""))
 
 
 def group_value_to_dict(group_value, group_keys):
@@ -145,195 +132,6 @@ def find_matching_master_flat(light_meta, master_flats, flat_keys):
 
     return None
 
-
-def compute_nearest_mid_transit(start_jd, end_jd, t0, period):
-    data_mid = (start_jd + end_jd) / 2.0
-    epoch = round((data_mid - t0) / period)
-    mid_transit_jd = t0 + epoch * period
-
-    return mid_transit_jd, epoch
-
-
-def suggest_wasp12b_transit_from_csv(photometry_csv: str | Path):
-    photometry_csv = Path(photometry_csv)
-
-    if not photometry_csv.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"photometry_csv not found: {photometry_csv}",
-        )
-
-    df = pd.read_csv(photometry_csv)
-
-    if "time" not in df.columns:
-        raise HTTPException(
-            status_code=400,
-            detail="photometry_csv must contain column: time",
-        )
-
-    df["time"] = pd.to_numeric(df["time"], errors="coerce")
-    df = df.dropna(subset=["time"])
-
-    if len(df) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="No valid time values in photometry_csv",
-        )
-
-    start_jd = float(df["time"].min())
-    end_jd = float(df["time"].max())
-    duration_data_hours = (end_jd - start_jd) * 24.0
-
-    # WASP-12b preset
-    t0 = 2454508.97682
-    period = 1.09142245
-    transit_duration_hours = 2.93
-
-    mid_transit_jd, epoch = compute_nearest_mid_transit(
-        start_jd=start_jd,
-        end_jd=end_jd,
-        t0=t0,
-        period=period,
-    )
-
-    return {
-        "object": "WASP-12b",
-        "t0": t0,
-        "period_days": period,
-        "epoch": epoch,
-        "mid_transit_jd": mid_transit_jd,
-        "transit_duration_hours": transit_duration_hours,
-        "start_jd": start_jd,
-        "end_jd": end_jd,
-        "data_duration_hours": duration_data_hours,
-        "start_minus_mid_hours": (start_jd - mid_transit_jd) * 24.0,
-        "end_minus_mid_hours": (end_jd - mid_transit_jd) * 24.0,
-    }
-
-
-def query_nasa_exoplanet_ephemeris(object_name: str):
-    object_name = object_name.strip()
-
-    if object_name == "":
-        raise HTTPException(
-            status_code=400,
-            detail="object_name is required",
-        )
-
-    query = f"""
-    SELECT pl_name, pl_orbper, pl_trandur, pl_tranmid
-    FROM pscomppars
-    WHERE lower(pl_name) = lower('{object_name}')
-    """
-
-    url = (
-        "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
-        "?query=" + quote(query)
-        + "&format=json"
-    )
-
-    try:
-        response = requests.get(url, timeout=20)
-        response.raise_for_status()
-        rows = response.json()
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to query NASA Exoplanet Archive: {e}",
-        )
-
-    if len(rows) == 0:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No exoplanet found in NASA Exoplanet Archive: {object_name}",
-        )
-
-    row = rows[0]
-
-    period_days = row.get("pl_orbper")
-    duration_hours = row.get("pl_trandur")
-    reference_mid_jd = row.get("pl_tranmid")
-
-    missing = []
-    if period_days is None:
-        missing.append("pl_orbper")
-    if duration_hours is None:
-        missing.append("pl_trandur")
-    if reference_mid_jd is None:
-        missing.append("pl_tranmid")
-
-    if len(missing) > 0:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "NASA Exoplanet Archive found the object, but required ephemeris values are missing.",
-                "missing_columns": missing,
-                "object_name": row.get("pl_name"),
-            },
-        )
-
-    return {
-        "object_name": row.get("pl_name"),
-        "period_days": float(period_days),
-        "transit_duration_hours": float(duration_hours),
-        "reference_mid_transit_jd": float(reference_mid_jd),
-        "source": "NASA Exoplanet Archive PSCompPars",
-    }
-
-
-def suggest_exoplanet_transit_from_archive(
-    photometry_csv: str | Path,
-    object_name: str,
-):
-    photometry_csv = Path(photometry_csv)
-
-    if not photometry_csv.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"photometry_csv not found: {photometry_csv}",
-        )
-
-    df = pd.read_csv(photometry_csv)
-
-    if "time" not in df.columns:
-        raise HTTPException(
-            status_code=400,
-            detail="photometry_csv must contain column: time",
-        )
-
-    time_values = pd.to_numeric(df["time"], errors="coerce").dropna()
-
-    if len(time_values) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="No valid time values in photometry_csv",
-        )
-
-    start_jd = float(time_values.min())
-    end_jd = float(time_values.max())
-    center_jd = (start_jd + end_jd) / 2.0
-    duration_data_hours = (end_jd - start_jd) * 24.0
-
-    ephem = query_nasa_exoplanet_ephemeris(object_name)
-
-    t0 = ephem["reference_mid_transit_jd"]
-    period = ephem["period_days"]
-
-    epoch = round((center_jd - t0) / period)
-    mid_transit_jd = t0 + epoch * period
-
-    return {
-        **ephem,
-        "epoch": int(epoch),
-        "mid_transit_jd": float(mid_transit_jd),
-        "start_jd": start_jd,
-        "end_jd": end_jd,
-        "center_jd": center_jd,
-        "data_duration_hours": duration_data_hours,
-        "start_minus_mid_hours": (start_jd - mid_transit_jd) * 24.0,
-        "end_minus_mid_hours": (end_jd - mid_transit_jd) * 24.0,
-    }
 
 # ==================================================
 # Request Models
@@ -391,47 +189,26 @@ class PhotometryRequest(BaseModel):
     auto_params: bool = True
 
 
-class TransitSuggestionRequest(BaseModel):
-    photometry_csv: str
-
-
-class ExoplanetEphemerisRequest(BaseModel):
-    photometry_csv: str
-    object_name: str
-
-
 class LightCurveRequest(BaseModel):
     photometry_csv: str
-    output_png: str | None = None
-    output_dir: str | None = None
+    output_png: str
 
-    show: bool = False
     remove_first_point: bool = False
     remove_outliers: bool = True
-
     sigma_clip: float | None = None
     bin_size: int | None = None
 
     mid_transit_jd: float | None = None
     transit_duration_hours: float | None = None
 
-    use_exoplanet_archive: bool = False
-    object_name: str | None = None
-
-    make_both_styles: bool = True
-    make_phase_plot: bool = False
-    t0: float | None = None
-    period: float | None = None
-
-    plot_style: Literal["1", "2"] = "1"
+    plot_style: Literal["academic", "line"] = "academic"
     title: str | None = None
+    model_type: Literal["data_only", "transit"] = "data_only"
 
-class FolderDialogRequest(BaseModel):
-    title: str = "Choose folder"
-    initial_dir: str | None = None
 
 class ListFitsRequest(BaseModel):
     input_path: str
+
 
 # ==================================================
 # Root
@@ -441,8 +218,7 @@ class ListFitsRequest(BaseModel):
 def root():
     return {
         "message": "WASP-12b Data Analysis API is running",
-        "version": "2.0.0",
-    }
+        "version": "2.0.0"}
 
 
 @app.get("/health")
@@ -450,48 +226,33 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/choose-folder")
-def api_choose_folder(req: FolderDialogRequest):
-    try:
-        from tkinter import Tk, filedialog
+@app.post("/upload-folder")
+async def api_upload_folder(files: list[UploadFile] = File(...)):
+    session_id = str(uuid.uuid4())[:8]
+    upload_root = Path("uploads") / session_id / "raw"
+    upload_root.mkdir(parents=True, exist_ok=True)
 
-        root = Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
+    saved_files = []
 
-        options = {
-            "title": req.title,
-        }
+    for file in files:
+        filename = Path(file.filename).name
+        output_file = upload_root / filename
 
-        if req.initial_dir is not None:
-            initial_dir = Path(req.initial_dir)
+        with output_file.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
-            if initial_dir.exists():
-                options["initialdir"] = str(initial_dir)
+        saved_files.append(str(output_file).replace("\\", "/"))
 
-        folder = filedialog.askdirectory(**options)
+    fits_files = get_fits_files(upload_root)
 
-        root.destroy()
-
-        if folder == "":
-            return {
-                "status": "cancelled",
-                "path": None,
-            }
-
-        folder = folder.replace("\\", "/")
-
-        return {
-            "status": "done",
-            "path": folder,
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to open folder dialog: {e}",
-        )
-
+    return {
+        "status": "done",
+        "session_id": session_id,
+        "raw_path": str(upload_root).replace("\\", "/"),
+        "output_path": str((Path("uploads") / session_id / "output")).replace("\\", "/"),
+        "n_uploaded": len(saved_files),
+        "n_fits_files": len(fits_files),
+        "first_file": str(fits_files[0]).replace("\\", "/") if fits_files else None}
 
 # ==================================================
 # FITS Headers
@@ -523,8 +284,7 @@ def api_read_headers(req: HeaderRequest):
         detected_groups.append({
             "group_name": str(group_name),
             "n_files": len(group_df),
-            "example_files": group_df["filename"].head(3).tolist(),
-        })
+            "example_files": group_df["filename"].head(3).tolist()})
 
     saved_files = {}
 
@@ -540,13 +300,11 @@ def api_read_headers(req: HeaderRequest):
 
         saved_files = {
             "headers_csv": str(headers_csv).replace("\\", "/"),
-            "summary_csv": str(summary_csv).replace("\\", "/"),
-        }
+            "summary_csv": str(summary_csv).replace("\\", "/")}
 
     preview_files = [
         p for p in fits_files
-        if is_light_preview_file(p)
-    ]
+        if is_light_preview_file(p)]
 
     if len(preview_files) == 0:
         preview_files = fits_files
@@ -554,8 +312,7 @@ def api_read_headers(req: HeaderRequest):
     first_file = (
         str(preview_files[0]).replace("\\", "/")
         if len(preview_files) > 0
-        else None
-    )
+        else None)
 
     set_progress(len(fits_files), len(fits_files), "Headers completed", False, "headers")
 
@@ -569,8 +326,7 @@ def api_read_headers(req: HeaderRequest):
         "summary": summary.to_dict(orient="records"),
         "detected_groups": detected_groups,
         "saved_files": saved_files,
-        "first_preview_file": first_file,
-    }
+        "first_preview_file": first_file}
 
 
 # ==================================================
@@ -611,27 +367,23 @@ def api_run_calibration(req: CalibrationRequest):
             detected_groups.append({
                 "group_name": str(group_name),
                 "n_files": len(group_df),
-                "example_files": group_df["filename"].head(3).tolist(),
-            })
+                "example_files": group_df["filename"].head(3).tolist()})
 
         set_progress(
             0,
             len(fits_files),
             "Waiting for frame role assignment",
             False,
-            "calibration",
-)
+            "calibration")
 
         return {
             "status": "need_frame_role_map",
             "message": "Please assign each detected group to bias/dark/flat/light/skip",
-            "detected_groups": detected_groups,
-        }
+            "detected_groups": detected_groups}
 
     df = add_standard_columns(
         df,
-        frame_role_map=req.frame_role_map,
-    )
+        frame_role_map=req.frame_role_map)
 
     df.to_csv(output_path / "fits_metadata_standard.csv", index=False)
 
@@ -672,8 +424,7 @@ def api_run_calibration(req: CalibrationRequest):
                 total,
                 message,
                 True,
-                "master_bias")
-        )
+                "master_bias"))
 
     set_progress(0, len(fits_files), "Creating master dark...", True, "calibration")
     set_progress(n_bias, n_bias, "Master bias completed", True, "master_bias")
@@ -697,8 +448,7 @@ def api_run_calibration(req: CalibrationRequest):
                 total,
                 message,
                 True,
-                "master_dark")
-        )
+                "master_dark"))
         
 
         master_darks[group_value] = output_file
@@ -725,8 +475,7 @@ def api_run_calibration(req: CalibrationRequest):
                 total,
                 message,
                 True,
-                "master_flat")
-        )
+                "master_flat"))
 
         master_flats[group_value] = output_file
 
@@ -742,20 +491,17 @@ def api_run_calibration(req: CalibrationRequest):
     for light_group_value, light_files in groups["light"].items():
         light_meta = group_value_to_dict(
             light_group_value,
-            used_keys["light"],
-        )
+            used_keys["light"])
 
         matched_dark_file = find_matching_master_dark(
             light_meta,
             master_darks,
-            used_keys["dark"],
-        )
+            used_keys["dark"])
 
         matched_flat_file = find_matching_master_flat(
             light_meta,
             master_flats,
-            used_keys["flat"],
-        )
+            used_keys["flat"])
 
         group_output_dir = calibrated_path / safe_group_name(light_group_value)
 
@@ -776,8 +522,7 @@ def api_run_calibration(req: CalibrationRequest):
                 "calibration",
             ),
             progress_start=processed_light,
-            progress_total=n_light,
-        )
+            progress_total=n_light)
 
         processed_light += len(light_files)
 
@@ -786,16 +531,14 @@ def api_run_calibration(req: CalibrationRequest):
             "n_light_files": len(light_files),
             "matched_dark": str(matched_dark_file) if matched_dark_file else None,
             "matched_flat": str(matched_flat_file) if matched_flat_file else None,
-            "output_dir": str(group_output_dir),
-        })
+            "output_dir": str(group_output_dir)})
 
         set_progress(
             n_light,
             n_light,
             "Light calibration completed",
             False,
-            "calibration",
-        )   
+            "calibration")   
 
 
     return {
@@ -810,8 +553,7 @@ def api_run_calibration(req: CalibrationRequest):
         "n_dark_groups": len(groups["dark"]),
         "n_flat_groups": len(groups["flat"]),
         "n_light_groups": len(groups["light"]),
-        "calibrated_groups": calibrated_groups,
-    }
+        "calibrated_groups": calibrated_groups}
 
 
 # ==================================================
@@ -834,8 +576,7 @@ def api_run_trim(req: TrimRequest):
         if req.target_width is None or req.target_height is None:
             raise HTTPException(
                 status_code=400,
-                detail="target_width and target_height are required when use_common_min_size=False",
-            )
+                detail="target_width and target_height are required when use_common_min_size=False")
 
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -848,8 +589,7 @@ def api_run_trim(req: TrimRequest):
         skip_existing=False,
         progress_callback=lambda current, total, message: set_progress(
             current, total, message, True, "trim"
-        ),
-    )
+        ))
 
     set_progress(len(fits_files), len(fits_files), "Trim completed", False, "trim")
 
@@ -861,8 +601,8 @@ def api_run_trim(req: TrimRequest):
         "use_common_min_size": req.use_common_min_size,
         "target_width": req.target_width,
         "target_height": req.target_height,
-        "result": str(result),
-    }
+        "result": str(result)}
+
 
 @app.post("/trim-summary")
 def api_trim_summary(req: TrimRequest):
@@ -882,8 +622,7 @@ def api_trim_summary(req: TrimRequest):
         df_shape.groupby(["NAXIS1", "NAXIS2"])
         .size()
         .reset_index(name="count")
-        .to_dict(orient="records")
-    )
+        .to_dict(orient="records"))
 
     size_counts = [
         {
@@ -891,8 +630,7 @@ def api_trim_summary(req: TrimRequest):
             "height": int(item["NAXIS2"]),
             "count": int(item["count"]),
         }
-        for item in raw_size_counts
-    ]
+        for item in raw_size_counts]
 
     return {
         "status": "done",
@@ -905,8 +643,7 @@ def api_trim_summary(req: TrimRequest):
         "min_width": int(min_width),
         "min_height": int(min_height),
         "max_width": int(max_width),
-        "max_height": int(max_height),
-    }
+        "max_height": int(max_height)}
 
 # ==================================================
 # Cosmic Ray Removal
@@ -936,8 +673,7 @@ def api_run_cosmic_ray(req: CosmicRayRequest):
         skip_existing=False,
         progress_callback=lambda current, total, message: set_progress(
             current, total, message, True, "cosmic_ray"
-        ),
-    )
+        ))
 
     set_progress(len(fits_files), len(fits_files), "Cosmic ray removal completed", False, "cosmic_ray")
 
@@ -950,8 +686,7 @@ def api_run_cosmic_ray(req: CosmicRayRequest):
         "sigclip": req.sigclip,
         "sigfrac": req.sigfrac,
         "objlim": req.objlim,
-        "result": str(result),
-    }
+        "result": str(result)}
 
 
 # ==================================================
@@ -981,8 +716,7 @@ def api_run_alignment(req: AlignmentRequest):
         skip_existing=False,
         progress_callback=lambda current, total, message: set_progress(
             current, total, message, True, "alignment"
-        ),
-    )
+        ))
 
     set_progress(len(fits_files), len(fits_files), "Alignment completed", False, "alignment")
 
@@ -994,8 +728,7 @@ def api_run_alignment(req: AlignmentRequest):
         "x_star": req.x_star,
         "y_star": req.y_star,
         "box_size": req.box_size,
-        "result": str(result),
-    }
+        "result": str(result)}
 
 
 # ==================================================
@@ -1061,34 +794,6 @@ def api_run_photometry(req: PhotometryRequest):
 
 
 # ==================================================
-# Transit Suggestion
-# ==================================================
-
-@app.post("/suggest-transit")
-def api_suggest_transit(req: TransitSuggestionRequest):
-    result = suggest_wasp12b_transit_from_csv(req.photometry_csv)
-
-    return {
-        "status": "done",
-        "step": "suggest_transit",
-        **result,
-    }
-
-
-@app.post("/suggest-exoplanet-transit")
-def api_suggest_exoplanet_transit(req: ExoplanetEphemerisRequest):
-    result = suggest_exoplanet_transit_from_archive(
-        photometry_csv=req.photometry_csv,
-        object_name=req.object_name,
-    )
-
-    return {
-        "status": "done",
-        "step": "suggest_exoplanet_transit",
-        **result,
-    }
-
-# ==================================================
 # Plot Light Curve
 # ==================================================
 
@@ -1103,146 +808,54 @@ def api_plot_lightcurve(req: LightCurveRequest):
             detail=f"photometry_csv not found: {photometry_csv}",
         )
 
-    set_progress(0, 1, "Plotting light curve...", True, "lightcurve")
-    
-    if not req.make_both_styles:
-        raise HTTPException(
-            status_code=400,
-            detail="This API currently supports make_both_styles=True only.",
+    output_png = Path(req.output_png)
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+
+    set_progress(0, 1, "Generating light curve...", True, "lightcurve")
+
+    if req.model_type == "transit":
+        transit_output_png = output_png.with_name(
+            output_png.stem + "_transit_fit.png"
         )
 
-    mid_transit_jd = req.mid_transit_jd
-    transit_duration_hours = req.transit_duration_hours
-    transit_suggestion = None
-    phase_png = None
-
-    if req.use_exoplanet_archive:
-        if req.object_name is None or req.object_name.strip() == "":
-            raise HTTPException(
-                status_code=400,
-                detail="object_name is required when use_exoplanet_archive=True",
-            )
-
-        transit_suggestion = suggest_exoplanet_transit_from_archive(
-            photometry_csv=photometry_csv,
-            object_name=req.object_name,
+        result = fit_transit(
+            photometry_csv=str(photometry_csv),
+            output_png=str(transit_output_png),
+            title=req.title or "Transit Model Fit",
         )
 
-        mid_transit_jd = transit_suggestion["mid_transit_jd"]
-        transit_duration_hours = transit_suggestion["transit_duration_hours"]
-
-    if req.make_both_styles:
-        if req.output_dir is not None:
-            output_dir = Path(req.output_dir)
-        elif req.output_png is not None:
-            output_dir = Path(req.output_png).parent
-        else:
-            output_dir = photometry_csv.parent
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        result = plot_lightcurve_both_styles(
-            photometry_csv=photometry_csv,
-            output_dir=output_dir,
-            show=False,
-            remove_first_point=req.remove_first_point,
-            remove_outliers=req.remove_outliers,
-            sigma_clip=req.sigma_clip,
-            bin_size=req.bin_size,
-            mid_transit_jd=mid_transit_jd,
-            transit_duration_hours=transit_duration_hours,
-            title=req.title,
-        )
-
-        set_progress(1, 1, "Light curve completed", False, "lightcurve")
+        set_progress(1, 1, "Transit model fit completed", False, "lightcurve")
 
         return {
             "status": "done",
             "step": "plot_lightcurve",
-            "mode": "both_styles",
+            "model_type": "transit",
             "photometry_csv": str(photometry_csv),
-            "output_dir": str(output_dir),
-            "academic_png": result["academic_png"],
-            "line_png": result["line_png"],
-            "phase_png": str(phase_png) if phase_png else None,
-            "mid_transit_jd": mid_transit_jd,
-            "transit_duration_hours": transit_duration_hours,
-            "transit_suggestion": transit_suggestion,
+            "output_png": str(transit_output_png).replace("\\", "/"),
+            "result": result,
         }
 
-    if req.output_png is None:
-        raise HTTPException(
-            status_code=400,
-            detail="output_png is required when make_both_styles=False",
-        )
-
-    output_png = Path(req.output_png)
-    output_png.parent.mkdir(parents=True, exist_ok=True)
-
-    result = plot_lightcurve_both_styles(
+    result = plot_lightcurve(
         photometry_csv=photometry_csv,
-        output_dir=output_dir,
-        show=False,
+        output_png=output_png,
         remove_first_point=req.remove_first_point,
         remove_outliers=req.remove_outliers,
         sigma_clip=req.sigma_clip,
         bin_size=req.bin_size,
-        mid_transit_jd=mid_transit_jd,
-        transit_duration_hours=transit_duration_hours,
+        mid_transit_jd=req.mid_transit_jd,
+        transit_duration_hours=req.transit_duration_hours,
+        plot_style=req.plot_style,
         title=req.title,
     )
 
-    phase_png = None
-
-    if req.make_phase_plot:
-        phase_t0 = req.t0
-        phase_period = req.period
-
-        if req.use_exoplanet_archive:
-            if transit_suggestion is None:
-                if req.object_name is None or req.object_name.strip() == "":
-                    raise HTTPException(
-                        status_code=400,
-                        detail="object_name is required when use_exoplanet_archive=True",
-                    )
-
-                transit_suggestion = suggest_exoplanet_transit_from_archive(
-                    photometry_csv=photometry_csv,
-                    object_name=req.object_name,
-                )
-
-            phase_t0 = transit_suggestion["reference_mid_transit_jd"]
-            phase_period = transit_suggestion["period_days"]
-
-        if phase_t0 is None or phase_period is None:
-            raise HTTPException(
-                status_code=400,
-                detail="t0 and period are required for phase plot, or use_exoplanet_archive=True with object_name.",
-            )
-
-        phase_png = output_dir / "lightcurve_phase_folded.png"
-
-        plot_phase_folded_lightcurve(
-            photometry_csv=photometry_csv,
-            output_png=phase_png,
-            t0=phase_t0,
-            period=phase_period,
-            show=False,
-            title=req.title or "Phase-folded Light Curve",
-        )
+    set_progress(1, 1, "Light curve completed", False, "lightcurve")
 
     return {
         "status": "done",
         "step": "plot_lightcurve",
-        "mode": "both_styles",
+        "model_type": "data_only",
         "photometry_csv": str(photometry_csv),
-        "output_dir": str(output_dir),
-        "academic_png": result["academic_png"],
-        "line_png": result["line_png"],
-        "phase_png": str(phase_png) if phase_png else None,
-        "mid_transit_jd": mid_transit_jd,
-        "transit_duration_hours": transit_duration_hours,
-        "transit_suggestion": transit_suggestion,
+        "output_png": str(result).replace("\\", "/"),
     }
 
 # ==================================================
@@ -1256,14 +869,11 @@ def api_get_file(path: str):
     if not file_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"File not found: {file_path}",
-        )
+            detail=f"File not found: {file_path}")
 
     return FileResponse(
         file_path,
-        media_type="image/png",
-        filename=file_path.name,
-    )
+        filename=file_path.name)
 
 
 @app.post("/list-fits")
@@ -1273,15 +883,13 @@ def api_list_fits(req: ListFitsRequest):
     if not input_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"input_path not found: {input_path}",
-        )
+            detail=f"input_path not found: {input_path}")
 
     fits_files = get_fits_files(input_path)
 
     preview_files = [
         p for p in fits_files
-        if is_light_preview_file(p)
-    ]
+        if is_light_preview_file(p)]
 
     if len(preview_files) == 0:
         preview_files = fits_files
@@ -1291,8 +899,7 @@ def api_list_fits(req: ListFitsRequest):
         "input_path": str(input_path).replace("\\", "/"),
         "n_files": len(fits_files),
         "files": [str(p).replace("\\", "/") for p in fits_files],
-        "first_file": str(preview_files[0]).replace("\\", "/") if len(preview_files) > 0 else None,
-    }
+        "first_file": str(preview_files[0]).replace("\\", "/") if len(preview_files) > 0 else None}
 
 
 # ==================================================
@@ -1311,31 +918,26 @@ def api_preview_fits(
     if not file_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"FITS file not found: {file_path}",
-        )
+            detail=f"FITS file not found: {file_path}")
 
     if downsample < 1:
         raise HTTPException(
             status_code=400,
-            detail="downsample must be >= 1",
-        )
+            detail="downsample must be >= 1")
 
     try:
         data = fits.getdata(file_path, memmap=False)
         data = np.asarray(data, dtype=np.float32)
 
-        # ถ้า FITS เป็น 3D ให้ squeeze เหลือ 2D ถ้าทำได้
         data = np.squeeze(data)
 
         if data.ndim != 2:
             raise HTTPException(
                 status_code=400,
-                detail=f"Only 2D FITS images are supported. Got shape {data.shape}",
-            )
+                detail=f"Only 2D FITS images are supported. Got shape {data.shape}")
 
         original_height, original_width = data.shape
 
-        # ทำภาพย่อ
         preview = data[::downsample, ::downsample]
 
         preview = np.asarray(preview, dtype=np.float32)
@@ -1348,7 +950,6 @@ def api_preview_fits(
             vmin = np.nanmin(preview)
             vmax = np.nanmax(preview)
 
-        # ให้ภาพแสดงแบบ origin="lower" เหมือน matplotlib / AstroImageJ style
         preview_for_display = np.flipud(preview)
 
         buffer = BytesIO()
@@ -1359,8 +960,7 @@ def api_preview_fits(
             cmap="gray",
             vmin=vmin,
             vmax=vmax,
-            format="png",
-        )
+            format="png")
 
         buffer.seek(0)
 
@@ -1373,8 +973,7 @@ def api_preview_fits(
                 "X-Preview-Width": str(preview.shape[1]),
                 "X-Preview-Height": str(preview.shape[0]),
                 "X-Downsample": str(downsample),
-            },
-        )
+            })
 
     except HTTPException:
         raise
@@ -1385,19 +984,8 @@ def api_preview_fits(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to preview FITS: {type(e).__name__}: {e}",
-        )
+            detail=f"Failed to preview FITS: {type(e).__name__}: {e}")
     
 @app.get("/progress")
 def get_progress():
     return PIPELINE_PROGRESS
-
-@app.post("/fit-transit")
-def fit_transit_api(data: dict):
-
-    time = np.array(data["time"])
-    flux = np.array(data["flux"])
-
-    result = fit_transit(time, flux)
-
-    return result

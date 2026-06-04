@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: astropipeline-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: astropipeline-frontend
+    ports:
+      - "3002:3002"
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000

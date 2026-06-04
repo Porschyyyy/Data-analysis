@@ -10,8 +10,7 @@ def get_fits_files(input_path):
     return sorted(
         list(input_path.rglob("*.fits")) +
         list(input_path.rglob("*.fit")) +
-        list(input_path.rglob("*.fts"))
-    )
+        list(input_path.rglob("*.fts")))
 
 
 def remove_cosmic_ray_tile(
@@ -29,13 +28,11 @@ def remove_cosmic_ray_tile(
         sigclip=sigclip,
         sigfrac=sigfrac,
         objlim=objlim,
-        cleantype="medmask"
-    )
+        cleantype="medmask")
 
     clean_tile = clean_tile.astype(np.float32)
 
     del mask
-
     return clean_tile
 
 
@@ -57,13 +54,9 @@ def remove_cosmic_ray_file_tiled(
         print(f"Skip cosmic existing: {output_file.name}")
         return
 
-    print(f"Cosmic cleaning tiled: {input_file.name}")
-
     data, header = fits.getdata(input_file, header=True, memmap=True)
     data = np.asarray(data, dtype=np.float32)
-
     ny, nx = data.shape
-
     clean_data = np.empty_like(data, dtype=np.float32)
 
     for y0 in range(0, ny, tile_size):
@@ -78,8 +71,7 @@ def remove_cosmic_ray_file_tiled(
                 tile,
                 sigclip=sigclip,
                 sigfrac=sigfrac,
-                objlim=objlim
-            )
+                objlim=objlim)
 
             clean_data[y0:y1, x0:x1] = clean_tile
 
@@ -98,8 +90,7 @@ def remove_cosmic_ray_file_tiled(
         output_file,
         clean_data,
         header=header,
-        overwrite=True
-    )
+        overwrite=True)
 
     del data
     del clean_data
@@ -122,12 +113,6 @@ def run_cosmic_ray_removal(
 
     fits_files = get_fits_files(input_path)
 
-    print("\n========== COSMIC RAY REMOVAL ==========")
-    print("Input :", input_path)
-    print("Output:", output_path)
-    print("Number of files:", len(fits_files))
-    print("Tile size:", tile_size)
-
     if len(fits_files) == 0:
         print("No FITS files found for cosmic ray removal")
         return
@@ -136,8 +121,6 @@ def run_cosmic_ray_removal(
         relative_path = input_file.relative_to(input_path)
         output_file = output_path / relative_path
 
-        print(f"\n[COSMIC {i}/{len(fits_files)}]")
-
         remove_cosmic_ray_file_tiled(
             input_file=input_file,
             output_file=output_file,
@@ -145,14 +128,10 @@ def run_cosmic_ray_removal(
             sigclip=sigclip,
             sigfrac=sigfrac,
             objlim=objlim,
-            skip_existing=skip_existing
-        )
+            skip_existing=skip_existing)
 
         if progress_callback is not None:
             progress_callback(
             i,
             len(fits_files),
-            f"Removing cosmic rays: {Path(input_file).name}",
-        )
-
-    print("\nCosmic ray removal finished")
+            f"Running Cosmic Ray Removal : {Path(input_file).name}")

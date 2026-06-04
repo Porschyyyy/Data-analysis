@@ -27,7 +27,7 @@ from calibration import (
     calibrate_light_files,)
 
 
-from gui_utils import (
+from backend.archive.gui_utils import (
     choose_folder,
     choose_reference_star_from_popup,
     select_multiple_star_positions_from_fits

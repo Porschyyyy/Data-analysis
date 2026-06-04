@@ -16,7 +16,6 @@ export type TabKey =
   | "stars"
   | "photometry"
   | "lightcurve"
-  | "results";
 
 export type ToolKey =
   | "move"
@@ -30,23 +29,13 @@ export type ToolKey =
   | "plot"
   | "run";
 
-export type TopMenuKey =
-  | "file"
-  | "edit"
-  | "image"
-  | "process"
-  | "analyze"
-  | "plugins"
-  | "window"
-  | "help";
 
 export type PreviewMode = "plot" | "fits";
-export type PlotStyle = "1" | "2";
+export type PlotStyle = "academic" | "line";
 export type ClickMode = "target" | "comparison" | null;
 
 export type PipelineStep = { key: StepKey; label: string };
 export type TabItem = { key: TabKey; label: string };
-export type MenuButton = { key: TopMenuKey; label: string };
 export type ToolbarButton = {
   key: ToolKey;
   title: string;

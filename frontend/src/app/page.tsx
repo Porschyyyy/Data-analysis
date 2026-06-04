@@ -20,7 +20,6 @@ import {
   pipelineSteps,
   tabs,
   toolbarButtons,
-  topMenuButtons,
 } from "./lib/constants";
 import {
   buildFitsImageUrl,
@@ -28,7 +27,6 @@ import {
   createLogger,
 } from "./lib/pipelineUtils";
 import {
-  chooseFolder as chooseFolderAction,
   plotOnly as plotOnlyAction,
   runAlignmentOnly as runAlignmentOnlyAction,
   runCalibrationOnly as runCalibrationOnlyAction,
@@ -40,10 +38,9 @@ import {
 } from "./lib/pipelineActions";
 import {
   handleToolClick as handleToolClickAction,
-  handleTopMenuClick as handleTopMenuClickAction,
   handleViewerClick as handleViewerClickAction,
 } from "./lib/viewerActions";
-import type { ClickMode, PlotStyle, PreviewMode, StepKey, TabKey, ToolKey, TopMenuKey, ViewerClickEvent } from "./types/pipeline";
+import type { ClickMode, PlotStyle, PreviewMode, StepKey, TabKey, ToolKey, ViewerClickEvent } from "./types/pipeline";
 
 export default function Home() {
   const [rawPath, setRawPath] = useState("");
@@ -70,9 +67,10 @@ export default function Home() {
   >([]);
   const [comparisonTargetCount, setComparisonTargetCount] = useState(3);
 
-  const [plotStyle, setPlotStyle] = useState<PlotStyle>("1");
+  const [plotStyle, setPlotStyle] = useState<PlotStyle>("academic");
   const [graphTitle, setGraphTitle] = useState("WASP-12b Light Curve");
   const [usePreset, setUsePreset] = useState(true);
+  const [modelType, setModelType] = useState<"data_only" | "transit">("data_only");
 
   const [imagePath, setImagePath] = useState("");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("plot");
@@ -125,18 +123,61 @@ export default function Home() {
     frameRoleMap,
     setFrameRoleMap,
     useCommonMinSize,
+    modelType,
   };
 
-  const chooseFolder = (target: "raw" | "output") =>
-    chooseFolderAction(target, {
-      rawPath,
-      outputPath,
-      addLog,
-      setRawPath,
-      setOutputPath,
-      setImagePath,
-      setFitsPreviewPath,
+  const [isUploading, setIsUploading] = useState(false);
+
+  const uploadFolder = async (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      addLog("No files selected.");
+      return;
+    }
+
+    setIsUploading(true);
+
+    const formData = new FormData();
+
+    Array.from(files).forEach((file) => {
+      formData.append("files", file);
     });
+
+    try {
+      addLog(`Uploading ${files.length} files...`);
+
+      setRawPath("Uploading files...");
+      setOutputPath("Preparing server workspace...");
+      setViewerMessage(`Uploading ${files.length} files...`);
+
+      const res = await fetch(`${API_BASE}/upload-folder`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        addLog(`Upload failed: ${text}`);
+        return;
+      }
+
+      const data = await res.json();
+
+      setRawPath(data.raw_path);
+      setOutputPath(data.output_path);
+
+      if (data.first_file) {
+        setFitsPreviewPath(data.first_file);
+        setPreviewMode("fits");
+        setPreviewVersion((v) => v + 1);
+      }
+
+      addLog(`Upload completed: ${data.n_fits_files} FITS files`);
+    } catch {
+      addLog("Upload failed. Please check backend server.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const runPipeline = () => runPipelineAction({ ...actionContext, runUntil });
   const plotOnly = (writeDoneLog = true) => plotOnlyAction(actionContext, writeDoneLog);
@@ -146,15 +187,6 @@ export default function Home() {
   const runCosmicOnly = () => runCosmicOnlyAction(actionContext);
   const runAlignmentOnly = () => runAlignmentOnlyAction(actionContext);
   const runPhotometryOnly = () => runPhotometryOnlyAction(actionContext);
-
-  const handleTopMenuClick = (menu: TopMenuKey) =>
-    handleTopMenuClickAction(menu, {
-      addLog,
-      setActiveTab,
-      setPreviewMode,
-      setViewerMessage,
-      chooseRawFolder: () => chooseFolder("raw"),
-    });
 
   const handleToolClick = (tool: ToolKey) =>
     handleToolClickAction(tool, {
@@ -368,6 +400,7 @@ const clearAllMarkers = () => {
 };
 
 
+
   return (
     <main className="min-h-screen bg-slate-100 p-4 text-slate-900">
       <div className="mx-auto flex max-w-375 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
@@ -435,13 +468,13 @@ const clearAllMarkers = () => {
           <div className="max-h-190 overflow-auto space-y-4 p-4">
             {activeTab === "import" && (
               <ImportPanel
+                uploadFolder={uploadFolder}
                 rawPath={rawPath}
                 outputPath={outputPath}
                 setRawPath={setRawPath}
                 setOutputPath={setOutputPath}
-                chooseRawFolder={() => chooseFolder("raw")}
-                chooseOutputFolder={() => chooseFolder("output")}
                 runHeadersOnly={runHeadersOnly}
+                isUploading={isUploading}
               />
             )}
 
@@ -516,6 +549,8 @@ const clearAllMarkers = () => {
               <LightCurvePanel
                 imagePath={imagePath}
                 setImagePath={setImagePath}
+                modelType={modelType}
+                setModelType={setModelType}
                 runPlotLightCurve={plotOnly}
               />
             )}

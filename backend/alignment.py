@@ -67,16 +67,13 @@ def align_one_file_by_centroid(
         print(f"Skip aligned existing: {output_file.name}")
         return
 
-    print(f"Aligning: {input_file.name}")
-
     data, header = load_fits_float32(input_file)
 
     x_centroid, y_centroid = find_centroid_in_box(
         data=data,
         x_guess=x_guess,
         y_guess=y_guess,
-        box_size=box_size
-    )
+        box_size=box_size)
 
     dx = x_reference - x_centroid
     dy = y_reference - y_centroid
@@ -103,8 +100,7 @@ def align_one_file_by_centroid(
         output_file,
         aligned_data,
         header=header,
-        overwrite=True
-    )
+        overwrite=True)
 
     del data
     del aligned_data
@@ -127,33 +123,20 @@ def run_centroid_alignment(
     fits_files = sorted(
         list(input_path.rglob("*.fits")) +
         list(input_path.rglob("*.fit")) +
-        list(input_path.rglob("*.fts"))
-    )
-
-    print("\n========== CENTROID ALIGNMENT ==========")
-    print("Input :", input_path)
-    print("Output:", output_path)
-    print("Number of files:", len(fits_files))
+        list(input_path.rglob("*.fts")))
 
     if len(fits_files) == 0:
         print("No files found for alignment")
         return
 
     reference_file = fits_files[0]
-    print("Reference file:", reference_file)
-
     reference_data, _ = load_fits_float32(reference_file)
 
     x_reference, y_reference = find_centroid_in_box(
         data=reference_data,
         x_guess=x_star,
         y_guess=y_star,
-        box_size=box_size
-    )
-
-    print("Reference centroid:")
-    print("x =", x_reference)
-    print("y =", y_reference)
+        box_size=box_size)
 
     del reference_data
 
@@ -164,8 +147,6 @@ def run_centroid_alignment(
         relative_path = input_file.relative_to(input_path)
         output_file = output_path / relative_path
 
-        print(f"\n[ALIGN {i}/{len(fits_files)}]")
-
         try:
             data, _ = load_fits_float32(input_file)
 
@@ -173,8 +154,7 @@ def run_centroid_alignment(
                 data=data,
                 x_guess=x_guess,
                 y_guess=y_guess,
-                box_size=box_size
-            )
+                box_size=box_size)
 
             del data
 
@@ -186,8 +166,7 @@ def run_centroid_alignment(
                 x_guess=x_guess,
                 y_guess=y_guess,
                 box_size=box_size,
-                skip_existing=skip_existing
-            )
+                skip_existing=skip_existing)
 
             x_guess = x_centroid
             y_guess = y_centroid
@@ -200,7 +179,4 @@ def run_centroid_alignment(
             progress_callback(
             i,
             len(fits_files),
-            f"Aligning {Path(input_file).name}",
-        )
-
-    print("\nCentroid alignment finished")
+            f"Running Alignment : {Path(input_file).name}")

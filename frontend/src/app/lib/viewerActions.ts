@@ -205,52 +205,6 @@ export function handleViewerClick(
   );
 }
 
-export function handleTopMenuClick(
-  menu: string,
-  ctx: {
-    addLog: AddLog;
-    setActiveTab: (tab: TabKey) => void;
-    setPreviewMode: (mode: PreviewMode) => void;
-    setViewerMessage: (message: string) => void;
-    chooseRawFolder: () => void;
-  }
-) {
-  if (menu === "file") {
-    ctx.setActiveTab("import");
-    ctx.setViewerMessage("File menu: choose raw FITS folder.");
-    ctx.addLog("Menu selected: File / Import");
-    ctx.chooseRawFolder();
-    return;
-  }
-
-  if (menu === "image") {
-    ctx.setActiveTab("stars");
-    ctx.setPreviewMode("fits");
-    ctx.setViewerMessage("Image menu: FITS preview / star selection.");
-    ctx.addLog("Menu selected: Image");
-    return;
-  }
-
-  if (menu === "process") {
-    ctx.setActiveTab("processing");
-    ctx.setViewerMessage("Process menu: trim, cosmic ray removal, alignment.");
-    ctx.addLog("Menu selected: Process");
-    return;
-  }
-
-  if (menu === "analyze") {
-    ctx.setActiveTab("photometry");
-    ctx.setViewerMessage("Analyze menu: photometry tools.");
-    ctx.addLog("Menu selected: Analyze / Photometry");
-    return;
-  }
-
-  if (menu === "window" || menu === "help") {
-    ctx.setActiveTab("results");
-    ctx.setViewerMessage("Results / Help opened.");
-    ctx.addLog("Menu selected: Results / Help");
-  }
-}
 
 export function handleToolClick(
   tool: ToolKey,

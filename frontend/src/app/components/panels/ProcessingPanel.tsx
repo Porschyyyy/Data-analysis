@@ -67,9 +67,9 @@ export function ProcessingPanel({
           }
           className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
         >
-          <option value="trimmed">trimmed</option>
-          <option value="cosmic_cleaned">cosmic_cleaned</option>
-          <option value="aligned">aligned</option>
+          <option value="trimmed">Trimmed</option>
+          <option value="cosmic_cleaned">Cosmic Ray Removed</option>
+          <option value="aligned">Aligned</option>
         </select>
       </label>
 
@@ -152,9 +152,13 @@ export function ProcessingPanel({
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <h4 className="font-semibold">Alignment</h4>
 
+        <p className="mt-1 text-xs text-slate-500">
+           Align all images using the selected reference star position.
+        </p>
+
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label>
-            <span className="text-sm font-medium">x_star</span>
+            <span className="text-sm font-medium">Reference Star X</span>
 
             <input
               value={xStar}
@@ -164,7 +168,7 @@ export function ProcessingPanel({
           </label>
 
           <label>
-            <span className="text-sm font-medium">y_star</span>
+            <span className="text-sm font-medium">Reference Star Y</span>
 
             <input
               value={yStar}
